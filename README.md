@@ -3,7 +3,10 @@
 Welcome to Qblox-CSG! 
 
 This repository is for organizing any files related to connecting and 
-executing/reading waveform sequences on the Qblox instrument. Before you can begin you must complete the following two steps: (1) Setup the environment and (2) run tests.
+executing/reading waveform sequences on the Qblox instrument. Before you can begin you must complete the following two steps,
+
+1. Setup the environment
+2. Run ./tests/test_*.ipynb
 
 ## Setup Instructions
 
@@ -13,6 +16,7 @@ command in Command Prompt or PowerShell,
 ```console
 setup_environment.bat
 ```
+
 This will create a Conda environment named ```qblox-csg``` with all of the required dependencies installed.
 
 ## Execute Tests
