@@ -1,0 +1,13 @@
+ttl_aquisition.ipynp
+Pulled from QBlox webiste 2024/10/17
+
+Unsuccessfully tested 2024/10/17
+using 	qblox-instruments	0.14.1
+and	firmware		0.9.1
+
+
+
+NOTES
+--------------------
+Confusion about inputs and outputs:
+- How can we manually select which output and which input is used?

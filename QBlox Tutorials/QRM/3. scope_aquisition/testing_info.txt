@@ -1,0 +1,6 @@
+scope_aquisition.ipynp
+Pulled from QBlox webiste 2024/10/17
+
+Tested 2024/10/17
+using 	qblox-instruments	0.14.1
+and	firmware		0.9.1

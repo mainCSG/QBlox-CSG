@@ -1,0 +1,15 @@
+This file contains a list of all current oustanding issues and a desciption of the issues.
+
+- QRM input scaling
+	The QRM module scales its inputs to be greater than the expected input by about 10%. 
+	The default gain setting for the QRM is -6 dB. For some reason this seems to be the setting for having no gain,
+	which doesn't make a lot of sense since intuitively it should be 0 dB. But setting it to 0 dB increases the input 
+	to far more than would be expected.
+	As of December 18th, 2024, Qblox has been informed through the slack channel about this issue. 
+	This issue has been occuring since at least spring term 2024.
+	They have said that they have been able to reproduce the scaling in-house, and will work to find an explanation
+	and solution. Currently, by setting the gain to -6 dB, we achieve an effective 0 dB gain for inputs into the QRM.
+
+- QRM Offset
+	Additionally, the QRM also has a voltage offset, dependent on environmental noise that fluctuates. A fucntion has
+	been added to the sequencer helper library to compensate for this offset.

@@ -1,0 +1,6 @@
+{
+    "waveforms": {},
+    "weights": {},
+    "acquisitions": {},
+    "program": "\n       set_mrk 15\n       reset_ph\n       set_awg_offs 10000,10000   #Feed a waveform with amplitude 0.3.\n       upd_param 400              #Update the parameters set and show it on the oscilloscope. \n       stop                       \n"
+}

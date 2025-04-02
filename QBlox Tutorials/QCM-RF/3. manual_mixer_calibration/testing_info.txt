@@ -1,0 +1,10 @@
+manual_mixer_calibration.ipynp
+Pulled from QBlox webiste 2024/10/23
+
+Untested
+using 	qblox-instruments	0.14.1
+and	firmware		0.9.1
+
+
+NOTES
+-----------------

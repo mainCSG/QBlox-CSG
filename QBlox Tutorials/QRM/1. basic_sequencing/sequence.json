@@ -1,0 +1,61 @@
+{
+    "waveforms": {
+        "gaussian": {
+            "data": [
+                0.0003672935471778283,
+                0.001542198007753245,
+                0.00560988932201667,
+                0.017678921382603945,
+                0.048266360469214696,
+                0.11416176000968685,
+                0.23392900588632448,
+                0.41527406678082224,
+                0.6386646265322857,
+                0.8509386120550868,
+                0.982224843331972,
+                0.982224843331972,
+                0.8509386120550868,
+                0.6386646265322857,
+                0.41527406678082224,
+                0.23392900588632448,
+                0.11416176000968685,
+                0.048266360469214696,
+                0.017678921382603945,
+                0.00560988932201667,
+                0.001542198007753245,
+                0.0003672935471778283
+            ],
+            "index": 0
+        },
+        "block": {
+            "data": [
+                1.0,
+                1.0,
+                1.0,
+                1.0,
+                1.0,
+                1.0,
+                1.0,
+                1.0,
+                1.0,
+                1.0,
+                1.0,
+                1.0,
+                1.0,
+                1.0,
+                1.0,
+                1.0,
+                1.0,
+                1.0,
+                1.0,
+                1.0,
+                1.0,
+                1.0
+            ],
+            "index": 1
+        }
+    },
+    "weights": {},
+    "acquisitions": {},
+    "program": "\n       move      100,R0   #Loop iterator.\n       move      20,R1    #Initial wait period in ns.\n       wait_sync 4        #Wait for sequencers to synchronize and then wait another 4 ns.\n\nloop:  set_mrk   1        #Set marker output 1.\n       play      0,1,4    #Play a gaussian and a block on output path 0 and 1 respectively and wait 4 ns.\n       set_mrk   0        #Reset marker output 1.\n       upd_param 18       #Update parameters and wait the remaining 18 ns of the waveforms.\n\n       wait      R1       #Wait period.\n\n       play      1,0,22   #Play a block and a gaussian on output path 0 and 1 respectively and wait 22 ns.\n       wait      1000     #Wait a 1us in between iterations.\n       add       R1,20,R1 #Increase wait period by 20 ns.\n       loop      R0,@loop #Subtract one from loop iterator.\n\n       stop               #Stop the sequence after the last iteration.\n"
+}

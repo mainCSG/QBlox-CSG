@@ -1,0 +1,11 @@
+advanced_sequencing.ipynp
+Pulled from QBlox webiste 2024/10/24
+
+Untested
+using 	qblox-instruments	0.14.1
+and	firmware		0.9.1
+
+
+
+NOTES
+--------------------

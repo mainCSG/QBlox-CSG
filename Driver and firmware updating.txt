@@ -1,0 +1,48 @@
+UPDATING DRIVERS AND FIRMWARE FOR QBLOX
+created 	2024/10/18	by Kyle MacRobbie
+last updated 	2024/10/18 	by Kyle MacRobbie
+-------------------------------------------------------------------------------------------------------------------------------
+Refer to the following compatibility matrix to check that your version of the firmware and qblox-instruments are compatible:
+	https://pypi.org/project/qblox-instruments/
+If they are not compatible, the programs will likely not run.
+-------------------------------------------------------------------------------------------------------------------------------
+qblox-intruments driver package
+	See the following for qblox-instruments update notes: https://docs.qblox.com/en/main/getting_started/whats_new.html	
+
+	Running the following command in a terminal will install qblox-instruments:
+		pip install qblox-instruments
+	Note that this may not be the most recent version of qblox-instruments.	
+
+	To install a specific verion of qblox-instruments (for example, version 0.14.1):
+		pip install qblox-instruments==0.14.1
+	This will uninstall whatever version of qblox-instruments is currently installed and install the specified version.
+-------------------------------------------------------------------------------------------------------------------------------
+firmware
+	To update the firmware:
+		- Go to https://gitlab.com/qblox/releases/cluster_releases/-/releases
+		- Download the zip file of the release you desire to install
+		- Ensure the QBlox Cluster is on and connected to the PC
+		- Find the IP of the Cluster. This information should be available and up-to-date in the "Cluster IP" text file
+		- To manually check the cluster IP, type the following command in the terminal:
+			qblox-pnp list
+		- In the terminal, run the following command:
+			qblox-cfg <cluster ip> update <filename.zip>
+		- For example, if you wish to use "cluster_releases-v0.9.1.zip" in the downloads folder,
+		  to update the cluster with IP 192.168.137.2
+			qblox-cfg 192.168.137.2 update C:\Users\BaughLaflamme\Downloads\cluster_releases-v0.9.1.zip
+		- The terminal will being the update process, and ask if you would like to proceed [Y/N], type "Y" and enter
+		- The update should begin, the terminal will display when the update is done uploading.
+		- The cluster uses its LEDs to indicate the state of the update.
+			- red/purple indicates the updating of the CMM
+			- yellow indicates the updating of the other modules
+			- white appears when the updating is done
+
+	When attempting to update the firmware to version 0.9.1, I ran into an issue you may encounter. The terminal stated that
+	the updates were finished, however the module LEDs were yellow, indicating that the update was still taking place.
+	I left it like this for around 45 minutes, hoping it was just still updating and would be done soon. After that much
+	time we decided to restart the cluster as we believed it became stuck in some state. Restarting allowed some code to
+	run, however it was later stopped since the driver did not update to 0.9.1, and was still on 0.9.0. However, some of 
+	the stuff had updated, meaning some was old and some was new, and neither the old or new version of qblox-instruments
+	was compatible. To remedy this, I simply attempted installing the firmware update again. This executed in less than a
+	minute, and the cluster went back to its ready state. We are unsure of what cause it to get stuck, but just note that
+	this may happen, and this is how we remedied it, in case you run into the same problem.

@@ -1,0 +1,11 @@
+{
+    "waveforms": {},
+    "weights": {},
+    "acquisitions": {
+        "acq": {
+            "num_bins": 1,
+            "index": 0
+        }
+    },
+    "program": "\n    move    10, R0            # Average iterator. ## storing number of averages in register 0\n\navg_loop:                               # Beginning of the average loop\n    reset_ph                            # Reset the phase of the NCO to 0\n    upd_param 200                       # Updates \"latched\" parameters, then waits for 200 nanoseconds. What is a latched parameter?\n    acquire 0, 0, 16384    # Acquires acquisition 0 (1 bin), saves it in bin with index 0 (the only bin), for the \n                                                        # entire duration of the acquisition buffer\n    loop    R0, @avg_loop                               # Decrement R0 by 1, if non-zero, jump to the start of avg_loop\n                                                        # @avg_loop acts as a sort of pointer to the beginning of the avg_loop\n\n    stop        # Stop the sequence\n"
+}

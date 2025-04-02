@@ -1,0 +1,19 @@
+binned_aquisition.ipynp
+Pulled from QBlox webiste 2024/10/17
+
+Unsuccessfully tested - pending answers from QBlox slack channel 2024/10/17
+using 	qblox-instruments	0.14.1
+and	firmware		0.9.1
+
+
+NOTES
+-----------------
+Confusion about binning:
+	- Why are the same number of data points being taken when we change the bin size
+	- Is the bin size set in the Q1ASM code where we believe it is set?
+	- If not all the data points in the aquisition are but into bins, which are and which are not?
+	- How can we have 131072 bins if we only have 16384 data points per aquisition?
+
+Answers from QBlox 2024/10/22
+	- unless the acquisition is stopped, it will continue until it is full even if the bins are already filled.
+	- 

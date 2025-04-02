@@ -1,0 +1,11 @@
+characterizing_input_offset.ipynp
+Pulled from QBlox webiste 2024/10/18
+
+Successfully tested 2024/10/18
+using 	qblox-instruments	0.14.1
+and	firmware		0.9.1
+
+
+
+NOTES
+--------------------
