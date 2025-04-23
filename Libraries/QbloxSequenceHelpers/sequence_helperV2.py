@@ -401,6 +401,7 @@ def make_output_sequence_square(input:list, module:str, iterations:int = 1, plot
 
 	# This will extract the line of code in the python notebook that called this function
 	# By the naming convention of the modules, the first three letters of that line will be either "qrm" or "qcm" from the name of the module.
+	
 	interpreted_module = str(inspect.getframeinfo(inspect.currentframe().f_back)[3][0])
 	i = 0
 	for char in interpreted_module:
@@ -410,10 +411,12 @@ def make_output_sequence_square(input:list, module:str, iterations:int = 1, plot
 			i += 1
 	
 	# i will be the index of the first non-tab character. This will take any indentatoin into account
+	
 	interpreted_module = interpreted_module[i:i+3]
 
 	# Check to see if the first three letters of that line are indeed the names of one of the modules. 
 	# If not, it is most likely that the naming convention has not been followed.
+	
 	if interpreted_module != 'qcm' and interpreted_module != 'qrm':
 		print(f"ERROR: module name not recognized ({interpreted_module}). Please name your modules one of the following:\n\t- qrm_module\n\t- qcm_module\n\nIf you are trying to sequence an RF module, please use make_rf_sequence() instead of make_output_sequence().")
 		return None
@@ -424,6 +427,7 @@ def make_output_sequence_square(input:list, module:str, iterations:int = 1, plot
 	# Determine what module is being used, make sure the module given to the function and the previously extracted module name correspond to the same module
 	# This is a precaution since if you accidentally pass "qrm" to the function while using the QCM, you will get 5x the voltage in the output
 	# Since the QCM has 5x the range as the QRM. So this double-checking prevents that from happening.
+	
 	if module == "qcm" and interpreted_module == "qcm":
 		module_range = 2.5
 	elif module == "qrm" and interpreted_module == "qrm":
@@ -437,12 +441,6 @@ def make_output_sequence_square(input:list, module:str, iterations:int = 1, plot
 	else:
 		print("ERROR: module type not supported by make_sequence()\nSee the docstring at the start of the function for supported module types.")
 		return None
-	
-	""" 
-	If the total length of all the ramps is less than the maximum length of waveforms that can be passed to a sequencer (16384 ns),
-	Then we will use waveforms to make the ramps as these will have the best resolution of any ramping method. Similarly, if any
-	squares have length greater than 65535 ns, we will need to use multiple upd_param commands, which are accounted for later in the function.
-	"""
 	
 	square_len = []
 	for step in input:
@@ -462,7 +460,7 @@ def make_output_sequence_square(input:list, module:str, iterations:int = 1, plot
 
 		# Check to see if we need to add looping
 		if iterations > 1:
-			sequence += f"""	\n move	{int(iterations)},R0\n	loop:"""
+			sequence += f"""	\n 	move	{int(iterations)},R0\n	loop:"""
 		
 
 		# Looping through the input list, adding to the sequence string and waveforms dictionary as needed.
@@ -512,43 +510,59 @@ def make_output_sequence_square(input:list, module:str, iterations:int = 1, plot
 				print("Input is not correct! Each voltage step should be a square.")
 				return None
 
-		print(f"The number of commands in the sequence is: {num_squares}")
+		print(f"The number of square commands in the sequence is: {num_squares}")
 
 		# Initializing out sequence string
+		
 		sequence_play = """"""
 
 		# Checking to see if we need to have multiple plays of the same sequence
+		
 		if iterations > 1:
-			sequence_play += f"""\n	move	{int(iterations)},R0\n	loop:"""
+			sequence_play += f"""\n			move	{int(iterations)},R0\n	loop:"""
 
 		# Loop through each step and add its commands to the sequence string
+		
 		for step in input:
 
 			# If it is a square pulse
+			
 			if step[0] == 'square':
 				voltage = step[2]
 				offset_q1 = round((voltage / module_range) * awg_offs_range) # Convert the offset to the Q1ASM value
-				# If the square pulse is longer than 65535 ns, we need mutliple wait commands
-				num_waits = math.floor(step[1]/65535) # How many full wait upd_param commands will have to be used
-				remainder_wait = int(step[1]%65535)	# Leftover waiting that needs to be done
-				# Add the correct amount of waiting
-				for i in range(num_waits):
-					sequence_play += f"""\n	set_awg_offs	{int(offset_q1)},{int(offset_q1)}\n	upd_param	65535"""
-				if remainder_wait != 0:
-					sequence_play += f"""\n	set_awg_offs	{int(offset_q1)},{int(offset_q1)}\n	upd_param	{remainder_wait}"""
+				
+				if offset_q1 < 0:
+					temp_string_1 = str(offset_q1)
+					temp_string_2 = temp_string_1[1:]
+					string = 'a' + temp_string_2
+
+				else:
+					string = str(offset_q1)
+
+				# If the square pulse is longer than 65535 ns, we need to include loops
+				
+				repeat_num = math.ceil(step[1]/65535)
+
+				sequence_play += f"""\n	move				{repeat_num},R1\n	offset{string}loop:"""
+				
+				sequence_play += f"""\n		set_awg_offs		{offset_q1},{offset_q1}\n		upd_param		{int(step[1]/repeat_num)}\n		loop		R1,@offset{string}loop"""
+
 			else:
 				print("Input is not correct! Each voltage step should be a square.")
 				return None
 
 		# Adding the end of the loop
+		
 		if iterations > 1:
 			sequence_play += f"""\n	loop	R0,@loop"""
 
 		# Create the whole sequence be beginning with syncing, and ending with resetting the offset to 0 and stopping
+		
 		sequence = """\n	wait_sync	4""" + sequence_play + f"""\n	set_awg_offs	0,0\n	upd_param	4\n	stop"""
 		waveforms = {}
 
 	# Create the sequence dictionary to be passed to the sequencer.
+	
 	sequence_dict = {
 		"waveforms": waveforms,
 		"weights": {},
@@ -556,7 +570,7 @@ def make_output_sequence_square(input:list, module:str, iterations:int = 1, plot
 		"program": sequence
 	}
 
-	# print(sequence) # uncomment to have the function print the sequence; used for sanity checks
+	print(sequence) # uncomment to have the function print the sequence; used for sanity checks
 
 	return sequence_dict
 
@@ -681,9 +695,11 @@ def make_input_sequence(input:list, iterations:int = 1, resolution = 300):
 	"""
 
 	# Duration of the acquisition
+	
 	duration = input[2]
 
 	# If the acquistion is within the time limit of a 16 microsecond acquisition.
+	
 	if duration <= 16384:
 
 		if resolution != 1:
@@ -692,166 +708,108 @@ def make_input_sequence(input:list, iterations:int = 1, resolution = 300):
 		
 		else:
 			# Set up the acquisition
+			
 			acquisitions = {
 				f"{input[0]}": {"num_bins": 1, "index": 0}
 			}
 
 			# Initialize the sequence string
+			
 			seq = f""""""
 
 			# Check if we need to loop
+			
 			if iterations > 1:
 				seq += f"""	move	{iterations},R0\n	loop:"""
 
 			# Set up the sequence
+			
 			seq += f"""\n	wait_sync	4"""
 
 			delay = int(input[1])
+			
 			# If there is a delay for the acquisition start, add a wait command
+			
 			if delay != 0:
 				# Since the maximum wait time for an upd_param command is 65535 ns, we will need multiple commands if there are longer waits than 65535 ns.
+				
 				num_full_waits = math.floor(delay/65535)	# Number of full wait commands
 				remainder = delay%65535	# Remaining wait time
+				
 				# Adding the wait time to the sequence string
+				
 				for i in range(num_full_waits):
 					seq += f"""\n	wait	65535"""
 				if remainder != 0:
 					seq += f"""\n	wait	{remainder}"""
 			
 			# Add the acquire command
+			
 			seq += f"""\n	acquire	0,0,{duration}"""
 
 			# Check if we need to loop
+			
 			if iterations > 1:
 				seq += f"""\n	loop	R0,@loop"""
 
 			# Stop
+			
 			seq += f"""\n	stop"""
 	
 	else:
 		# If the acquisition is more than 16 microsecoonds.
-		num_bins = math.ceil(duration / resolution)
-		acquisitions = {
-				f"{input[0]}": {"num_bins": num_bins, "index": 0}
-			}
-
-		# Set up the acquisition sequence
-		seq = f"""		move 		0,R0\n		move		{num_bins},R1\n		wait_sync	4\n		wait		150"""
-
-		delay = int(input[1])
-		# If there is a delay for the acquisition start
-		if delay != 0:
-			# Since the maximum wait time for an upd_param command is 65535 ns, we will need multiple commands if there are longer waits than 65535 ns.
-			num_full_waits = math.floor(delay/65535)	# Number of full wait commands
-			remainder = delay%65535	# Remaining wait time
-			# Adding the wait time to the sequence string
-			for i in range(num_full_waits):
-				seq += f"""\n	wait	65535"""
-			if remainder != 0:
-				seq += f"""\n	wait	{remainder}"""
-
-		# Loop and acquire for however long it needs
-		seq += f"""\n	loop:\n		acquire		0,R0,{resolution}\n		add		R0,1,R0\n		loop		R1,@loop\n		stop"""
-
-	print(f"Input sequence:\n{seq}")
-
-	# Add the information to the sequence dictionary
-	sequence = {
-		"waveforms": {},
-		"weights": {},
-		"acquisitions": acquisitions,
-		"program": seq,
-	}
-
-	return sequence
-
-def make_input_sequence_delayed(input:list, iterations:int = 1, resolution = 300):
-	
-	"""
-	Function that takes a list of acquisition instructions and make
-	a sequence dictionary with the Q1ASM sequence and acquisitions needed
-	in order to do a full acquisition
-	
-	The acquisition input list will take the following form:
-		['name', delay, duration]
-	"""
-
-	# Duration of the acquisition
-	duration = input[2]
-
-	# If the acquistion is within the time limit of a 16 microsecond acquisition.
-	if duration <= 16384:
-
-		if resolution != 1:
-			print(f"Resolution Error: Your acquisition is: {duration} ns, which has a resolution of 1 ns. Please set your resolution to 1 ns.")
-			return None
 		
-		else:
-			# Set up the acquisition
-			acquisitions = {
-				f"{input[0]}": {"num_bins": 1, "index": 0}
-			}
-
-			# Initialize the sequence string
-			seq = f""""""
-
-			# Check if we need to loop
-			if iterations > 1:
-				seq += f"""	move	{iterations},R0\n	loop:"""
-
-			# Set up the sequence
-			seq += f"""\n	wait_sync	4"""
-
-			delay = int(input[1])
-			# If there is a delay for the acquisition start, add a wait command
-			if delay != 0:
-				# Since the maximum wait time for an upd_param command is 65535 ns, we will need multiple commands if there are longer waits than 65535 ns.
-				num_full_waits = math.floor(delay/65535)	# Number of full wait commands
-				remainder = delay%65535	# Remaining wait time
-				# Adding the wait time to the sequence string
-				for i in range(num_full_waits):
-					seq += f"""\n	wait	65535"""
-				if remainder != 0:
-					seq += f"""\n	wait	{remainder}"""
-			
-			# Add the acquire command
-			seq += f"""\n	acquire	0,0,{duration}"""
-
-			# Check if we need to loop
-			if iterations > 1:
-				seq += f"""\n	loop	R0,@loop"""
-
-			# Stop
-			seq += f"""\n	stop"""
-	
-	else:
-		# If the acquisition is more than 16 microsecoonds.
 		num_bins = math.ceil(duration / resolution)
 		acquisitions = {
 				f"{input[0]}": {"num_bins": num_bins, "index": 0}
 			}
 
 		# Set up the acquisition sequence
-		seq = f"""		move 		0,R0\n		move		{num_bins},R1\n		wait_sync	4\n		wait		150"""
+		
+		seq = f"""		move 		0,R0\n		wait_sync	4\n		wait		150"""
 
 		delay = int(input[1])
+		
 		# If there is a delay for the acquisition start
+		
 		if delay != 0:
 			# Since the maximum wait time for an upd_param command is 65535 ns, we will need multiple commands if there are longer waits than 65535 ns.
+			
 			num_full_waits = math.floor(delay/65535)	# Number of full wait commands
 			remainder = delay%65535	# Remaining wait time
+			
 			# Adding the wait time to the sequence string
+			
 			for i in range(num_full_waits):
 				seq += f"""\n	wait	65535"""
 			if remainder != 0:
 				seq += f"""\n	wait	{remainder}"""
 
 		# Loop and acquire for however long it needs
-		seq += f"""\n	loop:\n		acquire		0,R0,{resolution}\n		add		R0,1,R0\n		wait		108\n		loop		R1,@loop\n		stop"""
+
+		if resolution <= 65535:
+			seq += f"""\n		move		{num_bins},R1\n		loop:\n		acquire		0,R0,{resolution}\n		add		R0,1,R0\n		loop		R1,@loop\n		stop"""
+		
+			repeat_num = 1
+
+		else:
+
+			# Ensure that the acquisition repeats
+
+			repeat_num = math.ceil(resolution/65535)
+			
+			print(repeat_num)
+
+			seq += f"""\n		move		{num_bins*repeat_num},R1"""
+
+			seq += f"""\n	loop:\n		acquire		0,R0,{int(resolution/repeat_num)}\n		add		R0,1,R0"""
+
+			seq += f"""\n		loop		R1,@loop\n		stop"""
 
 	print(f"Input sequence:\n{seq}")
 
 	# Add the information to the sequence dictionary
+	
 	sequence = {
 		"waveforms": {},
 		"weights": {},
@@ -859,7 +817,7 @@ def make_input_sequence_delayed(input:list, iterations:int = 1, resolution = 300
 		"program": seq,
 	}
 
-	return sequence
+	return sequence, repeat_num
 
 def plot_input(module:Module, sequencer:int, acquisition_name:str, path = 'both'):
 	module.get_acquisition_status(sequencer) # Wait for the sequencer to stop with a timeout period of one minute.
@@ -888,7 +846,7 @@ def plot_input(module:Module, sequencer:int, acquisition_name:str, path = 'both'
 		ax.set_title("QRM input")
 		ax.set_xlabel("Time [ns]")
 		ax.set_ylabel("Input [V]")
-		ax.set_ylim(-0.2,1.2)
+		ax.set_ylim(0.0,0.02)
 
 		# Add a grid to the plot
 		ax.grid(ls = '--')
@@ -937,7 +895,7 @@ def plot_input(module:Module, sequencer:int, acquisition_name:str, path = 'both'
 		ax.set_title("QRM input")
 		ax.set_xlabel("Time [ns]")
 		ax.set_ylabel("Input [V]")
-		ax.set_ylim(-0.2,1.2)
+		ax.set_ylim(0.0,0.02)
 
 		# Add a grid to the plot
 		ax.grid(ls = '--')
@@ -1009,7 +967,7 @@ def plot_input_multi(module:Module, sequencers:list, acquisition_names:list, pat
 		ax.set_title("QRM input")
 		ax.set_xlabel("Time [ns]")
 		ax.set_ylabel("Input [V]")
-		ax.set_ylim(-0.2,1.2)
+
 
 		# Add a grid to the plot
 		ax.grid(ls = '--')
@@ -1046,18 +1004,27 @@ def connect_output(module:Module, sequencer:int, output_index:int, path:int):
 	return None
 
 def connect_input(module:Module, sequencer:int, input_index:int, path:int, resolution = 300):
-	""" Function to set up the connection from a sequencer and an input
-	"""
+	
+	# Function to set up the connection from a sequencer and an input
+	
 	# Determine the path being used
+	
 	path_name = 'I'
 	if path == 1:
 		path_name = 'Q'
+	
 	eval(f"module.sequencer{sequencer}.connect_acq_{path_name}('in{input_index}')")	# Connect to the input
+	
 	module.scope_acq_sequencer_select(sequencer) # Select scope mode
+	
 	eval(f"module.scope_acq_trigger_mode_path{path}('sequencer')") # Set the scope to trigger off of the sequencer acquire commands
+	
 	eval(f"module.sequencer{sequencer}.delete_acquisition_data(all = True)") # Delete the previous acquisition
+	
 	eval(f"module.sequencer{sequencer}.integration_length_acq({resolution})") # Set the integration length / resolution
+	
 	eval(f"module.scope_acq_avg_mode_en_path{path}(True)") # Enable averaging over many loops
+	
 	eval(f"module.sequencer{sequencer}.sync_en(True)") # Enable syncing with other sequencers
 	return None
 

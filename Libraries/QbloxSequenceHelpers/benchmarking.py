@@ -27,7 +27,7 @@ from qblox_instruments import Cluster, ClusterType
 if TYPE_CHECKING:
     from qblox_instruments.qcodes_drivers.module import Module
 import sys
-sys.path.append(r"C:\\Users\\BaughLaflamme\\Desktop\\Qblox Master Folder\\Cluster\\Libraries\\Qblox Sequence Helpers")
+sys.path.append(r"C:\\Users\\coher\\Documents\\GitHub\\QBlox-CSG\\Libraries\\Qblox Sequence Helpers")
 import sequence_helperV2 as sh
 import benchmarking as bm
 import time
@@ -74,6 +74,14 @@ class QbloxExperiment:
 		self.qrm_module = modules[4]
 		self.rf_module = modules[6]
 
+		"""TODO Add functionality that automatically detects and informs the user of which modules are connected 
+		to which slots, rather than the slots being predefined. Also add error if there are any issues with modules connecting
+		"""
+
+	def run_1D_trace(self, num_steps, length_per_point, start_point: float, end_point: float, acq_sequencer: int, acquisition_name: str, resolution = 300, plot = False):
+
+		return None
+
 	def run_2D_sweep(self, num_steps, inner_sweep_length, start_points: list, end_points: list, acq_sequencer: int, acquisition_name: str, resolution = 300, plot = False):
 
 		"""
@@ -82,7 +90,6 @@ class QbloxExperiment:
 		The function takes inputs:
 
 		num_steps:          The number of voltage steps in the sweep for both gates
-		stepsize:           The stepsize in volts (e.g. if you wanted steps of 10 mV then you would input 10e-3)
 		inner_sweep_length: The full duration of a single sweep of the inner loop in seconds
 		start_points:        The starting voltages for the inner and outer sweeps in volts. Input is a list
 		end_points:          The ending voltages for the inner and outer sweeps in volts. Input is a list
@@ -102,7 +109,7 @@ class QbloxExperiment:
 
 		output_0_list = np.linspace(start_points[0], end_points[0], num_steps)
 
-		print(output_0_list)
+		# print(output_0_list)
 
 		for i in output_0_list:
 			output_seq_0.append(['square', inner_sweep_length/num_steps, i])
@@ -113,12 +120,10 @@ class QbloxExperiment:
 
 		output_1_list = np.linspace(start_points[1], end_points[1], num_steps)
 
-		print(output_1_list)
+		# print(output_1_list)
 
 		for i in output_1_list:
 			output_seq_1.append(['square', inner_sweep_length, i])
-
-		
 
 		# Finally, we define our input sequence
 
@@ -144,7 +149,7 @@ class QbloxExperiment:
 
 		qcm_module.sequencer0.sequence(sh.make_output_sequence_square(output_seq_0, module = "qcm", iterations = num_steps))
 		qcm_module.sequencer1.sequence(sh.make_output_sequence_square(output_seq_1, module = "qcm"))
-		qrm_module.sequencer0.sequence(sh.make_input_sequence(input_seq_0, resolution = resolution))
+		qrm_module.sequencer0.sequence(sh.make_input_sequence(input_seq_0, resolution = resolution)[0])
 
 		# Now, we connect the modules to the sequencers
 
@@ -182,7 +187,7 @@ class QbloxExperiment:
 		cluster.start_sequencer()
 
 		# TODO Add code to check whether sequence requires sleep time or not; currently sleeps for 5 seconds automatically
-		time.sleep(5)
+		time.sleep(10)
 
 		# Then, we stop the sequencers
 
@@ -197,7 +202,8 @@ class QbloxExperiment:
 			# This section constructs both axes for the heat map
 
 			X, Y = np.meshgrid(output_0_list, output_1_list)
-			
+			print(np.shape(X))
+
 			# This section retrieves the data from the acquisition
 
 			qrm_module.get_acquisition_status(acq_sequencer) # Wait for the sequencer to stop with a timeout period of one minute.
@@ -231,13 +237,15 @@ class QbloxExperiment:
 				data1 = readout_data[acquisition_name]['acquisition']['scope']['path1']['data'] # Extract path 1 data
 
 			else:
+				
+				repeat_num = sh.make_input_sequence(input_seq_0, resolution = resolution)[1]
 
 				print(f"resolution in plot_input: {resolution}")
-				data0 = np.array(readout_data[acquisition_name]['acquisition']['bins']['integration']['path0']) / resolution # Extract path 0 data
-				data1 = np.array(readout_data[acquisition_name]['acquisition']['bins']['integration']['path1']) / resolution # Extract path 1 data
+				data0 = np.array(readout_data[acquisition_name]['acquisition']['bins']['integration']['path0']) * (repeat_num**2) / resolution # Extract path 0 data
+				data1 = np.array(readout_data[acquisition_name]['acquisition']['bins']['integration']['path1']) * (repeat_num**2) / resolution # Extract path 1 data
 
-			data_array_0 = data0.reshape(200,200)
-			data_array_1 = data1.reshape(200,200)
+			data_array_0 = data0.reshape(X.shape)
+			data_array_1 = data1.reshape(X.shape)
 
 			# TODO add error if data is not the same shape as X and Y
 
@@ -245,7 +253,7 @@ class QbloxExperiment:
 
 			print(data_array_0)
 
-			print(X)
+			# print(X)
 
 
 			# Plot the heatmap(s)
@@ -271,4 +279,9 @@ class QbloxExperiment:
 
 			plt.show()
 			
-		
+			print(qrm_module.get_sequencer_status(0))
+			print(qrm_module.get_acquisition_status(0))
+			print(qrm_module.get_assembler_status())
+
+# TODO restart the cluster connection after sweep is complete. This ensures no issues when setting offsets a second time
+
