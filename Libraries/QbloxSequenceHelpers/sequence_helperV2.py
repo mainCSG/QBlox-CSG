@@ -129,260 +129,6 @@ def plot_waveforms(waveforms):
 	return None
 
 def make_output_sequence(input:list, module:str, iterations:int = 1, plot = False):
-	"""Function that generates a Q1ASM sequence for a series of gate 
-	voltages and ramps based on the input.
-	
-	The function also specifies whether the gates are being controlled
-	by the QRM or QCM. The 'module' arguement can either be
-		- 'qrm'
-		- 'qcm'
-	
-	The input is a list where each entry is either a square
-	pulse or a ramp.
-	
-	The input list will take the form:
-
-		For square pulses
-		[
-			['type', 'length', 'magnitude']
-		]
-	
-		For ramps
-		[
-			['type', 'length', 'start value', 'end value']
-		]
-
-		Supported types:
-			- 'square'
-			- 'ramp'
-	
-	The input list should be in the order in which the voltages should be executed.
-	"""
-
-	# This will extract the line of code in the python notebook that called this function
-	# By the naming convention of the modules, the first three letters of that line will be either "qrm" or "qcm" from the name of the module.
-	interpreted_module = str(inspect.getframeinfo(inspect.currentframe().f_back)[3][0])
-	i = 0
-	for char in interpreted_module:
-		if char != '	':
-			break
-		else:
-			i += 1
-	
-	# i will be the index of the first non-tab character. This will take any indentatoin into account
-	interpreted_module = interpreted_module[i:i+3]
-
-	# Check to see if the first three letters of that line are indeed the names of one of the modules. 
-	# If not, it is most likely that the naming convention has not been followed.
-	if interpreted_module != 'qcm' and interpreted_module != 'qrm':
-		print(f"ERROR: module name not recognized ({interpreted_module}). Please name your modules one of the following:\n\t- qrm_module\n\t- qcm_module\n\nIf you are trying to sequence an RF module, please use make_rf_sequence() instead of make_output_sequence().")
-		return None
-
-	module_range = 0		# Just setting up this variable
-	awg_offs_range = 32767	# The range of values that can be passed into the Q1ASM command set_awg_offs
-
-	# Determine what module is being used, make sure the module given to the function and the previously extracted module name correspond to the same module
-	# This is a precaution since if you accidentally pass "qrm" to the function while using the QCM, you will get 5x the voltage in the output
-	# Since the QCM has 5x the range as the QRM. So this double-checking prevents that from happening.
-	if module == "qcm" and interpreted_module == "qcm":
-		module_range = 2.5
-	elif module == "qrm" and interpreted_module == "qrm":
-		module_range = 0.5
-	elif module == "qrm" and interpreted_module == "qcm":
-		print("ERROR: module name and module passed into make_output_sequence() do not match.")
-		return None
-	elif module == "qcm" and interpreted_module == "qrm":
-		print("ERROR: module name and module passed into make_output_sequence() do not match.")
-		return None
-	else:
-		print("ERROR: module type not supported by make_sequence()\nSee the docstring at the start of the function for supported module types.")
-		return None
-
-	# Find the total length of all ramps, to see if waveforms can be used.
-	ramp_len = 0
-	for step in input:
-		if step[0] == 'ramp':
-			ramp_len += step[1]
-
-	# Find the maximum length of all squares, to see if waveforms can be used.
-	""" 
-	If the total length of all the ramps is less than the maximum length of waveforms that can be passed to a sequencer (16384 ns),
-	Then we will use waveforms to make the ramps as these will have the best resolution of any ramping method. Similarly, if any
-	squares have length greater than 65535 ns, we will need to use multiple upd_param commands, which are accounted for later in the function.
-	"""
-	square_len = []
-	for step in input:
-		if step[0] == 'square':
-			square_len.append(step[1])
-		else:
-			square_len.append(0)
-
-	square_len_max = max(square_len)
-
-	if ramp_len <= 16384 and square_len_max <= 65535:
-		# Since we can't have a waveform with a magnitude greater than 1, if a ramp spans more than half of the output range, 
-		# the funciton will raise an error.
-		# To rememdy this, any ramp crossing 0 V will be split into two ramps, one going from start to 0 and the other going from 0 to end.
-		input_range_corrected = [] # Where the new input list will be stored
-		# Looping through each step to see if it needs to be broken up into two separate steps
-		for step in input:
-			if step[0] == 'ramp' and ((step[2] > 0 and step[3] < 0) or ((step[2] < 0 and step[3] > 0))):
-				# If it is a ramp that crosses 0
-				# Find the time that it crosses 0, and split into two waveforms and steps
-				ramp_lenght = step[1]
-				per = abs(step[2]) / (abs(step[2]) + abs(step[3])) # decimal percentage of the amount of ramp time that has to be spent on the first ramp
-				first_length = round(ramp_lenght)*per # Length of the first ramp
-				second_length = ramp_lenght - first_length # Length of the second ramp, calculated from the first ramp
-
-				# Make sure neither length is less than 4, and if it is then set it to 4
-				if first_length < 4:
-					first_length = 4
-					second_length = ramp_lenght - first_length
-				if second_length < 4:
-					second_length = 4
-					first_length = ramp_lenght - second_length
-
-				first_ramp = ['ramp', first_length, step[2], 0]	# New step for the first ramp
-				second_ramp = ['ramp', second_length, 0, step[3]] # New step for the second ramp
-				input_range_corrected.append(first_ramp)	# Add our new ramps to the list
-				input_range_corrected.append(second_ramp)
-			else:
-				# If it does not cross zero, keep the step as it is
-				input_range_corrected.append(step)
-		input = input_range_corrected
-
-		# Initializing our sequence string variable
-		sequence = f""""""
-
-		# Check to see if we need to add looping
-		if iterations > 1:
-			sequence += f"""	move	{int(iterations)},R0\n	loop:"""
-
-		# Setting up the waveforms dictionary and the sequence string.
-		waveform_specs = {}
-		sequence += """\n	wait_sync	4"""
-
-		# Looping through the input list, adding to the sequence string and waveforms dictionary as needed.
-		waveform_index = 0
-		temp_str = """"""
-
-		for step in input:
-			# Check what type of step it is (square or ramp).
-			step_type = step[0]
-			step_len = int(step[1])
-
-			if step_type == "square":
-				offset = step[2]
-				offset_q1 = round((offset/module_range)*awg_offs_range) # Convert the offset to the Q1ASM value
-				temp_str = f"""\n	set_awg_offs	{offset_q1},{offset_q1}\n	upd_param	{step_len}""" # Add the step to our sequence string
-			
-			elif step_type == "ramp":
-				# For a ramp, the offset will first be set to whatever the final voltage of the ramp is
-				# then the ramp will be played on top of that offset voltage, going from the difference between the start and end voltage to zero.
-				start = (step[2] - step[3]) / module_range
-				end = 0
-				waveform_specs[str(waveform_index)] = ['ramp', step_len, start, end, waveform_index] # Waveform to be played on top of the offset
-				new_offset = step[3] # Offset, also the final voltage and will be ramped to.
-				new_offset_q1 = round((new_offset/module_range)*awg_offs_range) # Convert the offset to the Q1ASM value
-				temp_str = f"""\n	set_awg_offs	{new_offset_q1},{new_offset_q1}\n	play	{waveform_index},{waveform_index},{step_len}""" # Add the step to our sequence string
-				waveform_index += 1
-
-			else:
-				print("ERROR: step type not supported by make_sequence().\nSupported step types are 'square' and 'ramp'.")
-
-			sequence += temp_str
-
-		# Check to see if we need to add looping
-		if iterations > 1:
-			sequence += f"""\n	loop	R0,@loop"""
-
-		# End by resetting the offset to 0 and stopping the sequence
-		sequence += """\n	set_awg_offs	0,0\n	upd_param	4\n	stop"""
-
-		# Generate the ramp waveforms and plot if plotting has been selected
-		waveforms = make_waveforms(waveform_specs)
-		if plot == True:
-			plot_waveforms(waveforms)
-
-	# If the amount of ramping is greater than 16384 ns, we cannot store all of the ramping in waveforms.
-	# So we will have to create ramps by stepping the voltage with some resolution, that will be determined by how many steps we need
-	# and how many commands we are allowed to pass into a sequence.
-	else:
-		# Before defining a resolution, we need to find the square steps to see how many commands we can use to make our ramps.
-		# Since upd_param has a maximum wait time of 65535, if the square pulse is longer than that, we need to use multiple upd_param values.
-		num_squares = 0
-		for step in input:
-			if step[0] == 'square':	# if this is a square pulse
-				num_commands = math.ceil(step[1]/65535) # The number of steps that will be necessary to make this square pulse
-				num_squares += num_commands
-
-		num_subpulses = (12288 / 2) - 10 - (2*num_squares)	# Making sure we don't pass the 12288 instruction limit for the sequencer
-		resolution = math.ceil(ramp_len / num_subpulses)	# Define the resolution based on how many instructions we can give
-		if resolution < 8:	# There is a minimum resolution based on the time it takes to set a voltage using Q1ASM
-			resolution = 8
-
-		# Initializing out sequence string
-		sequence_play = """"""
-
-		# Checking to see if we need to have multiple plays of the same sequence
-		if iterations > 1:
-			sequence_play += f"""\n	move	{int(iterations)},R0\n	loop:"""
-
-		# Loop through each step and add its commands to the sequence string
-		for step in input:
-			if step[0] == 'ramp':
-				start_voltage = step[2]
-				end_voltage = step[3]
-				start_offset_q1 = round((start_voltage / module_range) * awg_offs_range) # Convert the offset to the Q1ASM value
-				end_offset_q1 = round((end_voltage / module_range) * awg_offs_range) # Convert the offset to the Q1ASM value
-				# Determine the voltage jump at each step. This is determined by dividing the entire range of the ramp by the 
-				# number of steps it will ultimately use. Then it is converted to a Q1ASM value by adjusting for the module output
-				# range multiplying by the Q1ASM command range
-				num_steps = round(step[1]/resolution)
-				step_size_q1 = (((end_voltage - start_voltage) / num_steps) / module_range) * awg_offs_range
-				# Create a list of steps
-				offsets_q1 = np.round(np.linspace(start_offset_q1, end_offset_q1 + step_size_q1, num_steps))
-				# Loop through the steps, and add that steps commands to the sequence string
-				for offset in offsets_q1:
-					sequence_play += f"""\n	set_awg_offs	{int(offset)},{int(offset)}\n	upd_param	{int(resolution)}"""
-
-			# If it is a square pulse
-			elif step[0] == 'square':
-				voltage = step[2]
-				offset_q1 = round((voltage / module_range) * awg_offs_range) # Convert the offset to the Q1ASM value
-				# If the square pulse is longer than 65535 ns, we need mutliple wait commands
-				num_waits = math.floor(step[1]/65535) # How many full wait upd_param commands will have to be used
-				remainder_wait = int(step[1]%65535)	# Leftover waiting that needs to be done
-				# Add the correct amount of waiting
-				for i in range(num_waits):
-					sequence_play += f"""\n	set_awg_offs	{int(offset_q1)},{int(offset_q1)}\n	upd_param	65535"""
-				if remainder_wait != 0:
-					sequence_play += f"""\n	set_awg_offs	{int(offset_q1)},{int(offset_q1)}\n	upd_param	{remainder_wait}"""
-		
-		# Adding the end of the loop
-		if iterations > 1:
-			sequence_play += f"""\n	loop	R0,@loop"""
-
-		# Create the whole sequence be beginning with syncing, and ending with resetting the offset to 0 and stopping
-		sequence = """\n	wait_sync	4""" + sequence_play + f"""\n	set_awg_offs	0,0\n	upd_param	4\n	stop"""
-		waveforms = {}
-		print(f"resolution for {module} output: {resolution} ns")
-
-	# Create the sequence dictionary to be passed to the sequencer.
-	sequence_dict = {
-		"waveforms": waveforms,
-		"weights": {},
-		"acquisitions": {},
-		"program": sequence
-	}
-
-	# print(sequence) # uncomment to have the function print the sequence; used for sanity checks
-
-	return sequence_dict
-
-def make_output_sequence_square(input:list, module:str, iterations:int = 1, plot = False):
-	
-	# TODO Make this function better. Unecessary comments should be removed and code can be condesned.
 	
 	"""Function that generates a Q1ASM sequence for a series of gate 
 	voltages and ramps based on the input. THIS IS A SQUARE VERSION ONLY.
@@ -490,8 +236,6 @@ def make_output_sequence_square(input:list, module:str, iterations:int = 1, plot
 		# End by resetting the offset to 0 and stopping the sequence
 		sequence += """\n	set_awg_offs	0,0\n	upd_param	4\n	stop"""
 
-	
-
 	# If the amount of ramping is greater than 16384 ns, we cannot store all of the ramping in waveforms.
 	# So we will have to create ramps by stepping the voltage with some resolution, that will be determined by how many steps we need
 	# and how many commands we are allowed to pass into a sequence.
@@ -570,7 +314,7 @@ def make_output_sequence_square(input:list, module:str, iterations:int = 1, plot
 		"program": sequence
 	}
 
-	print(sequence) # uncomment to have the function print the sequence; used for sanity checks
+	# print(sequence) # uncomment to have the function print the sequence; used for sanity checks
 
 	return sequence_dict
 
@@ -796,7 +540,7 @@ def make_input_sequence(input:list, iterations:int = 1, resolution = 300):
 
 			# Ensure that the acquisition repeats
 
-			repeat_num = math.ceil(resolution/65535)
+			repeat_num = math.ceil(resolution/16384)
 			
 			print(repeat_num)
 
