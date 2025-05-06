@@ -69,7 +69,10 @@ class QbloxExperiment:
 		modules = get_connected_modules(self.cluster)
 		self.module = list(modules.values())[0]
 		self.cluster.reset()
+
+		print(modules)
 		print(self.cluster.get_system_status())
+		
 		self.qcm_module = modules[2]
 		self.qrm_module = modules[4]
 		self.rf_module = modules[6]
@@ -78,11 +81,44 @@ class QbloxExperiment:
 		to which slots, rather than the slots being predefined. Also add error if there are any issues with modules connecting
 		"""
 
-	def run_1D_trace(self, num_steps, length_per_point, start_point: float, end_point: float, acq_sequencer: int, acquisition_name: str, resolution = 300, plot = False):
+	def run_1D_trace(self, num_steps, length_per_point, start_point: float, end_point: float, acq_sequencer: int, acquisition_name: str, acquisition_delay = 0, resolution = 300, plot = False):
+
+		"""
+		This function allows the user to create a 1D Voltage Trace with minimal interaction with Q1ASM and the Qblox cluster.
+
+		The function takes inputs:
+
+		num_steps:         The number of voltage steps in the sweep for both gates
+		length_per_point:  The full duration of a single point in nanoseconds
+		start_point:       The starting voltage for the trace in volts
+		end_point:         The ending voltages for the trace in volts
+		acq_sequencer:     The label of the sequencer being used for acquisition
+		acquisition_name:  The name given to the acquisition
+		acquisition_delay: The amount of time before an acquisition starts in nanoseconds 
+		plot:              If True, run_2D_sweep() will create a heat map of the data; Set to False by default 
+						   and will output a voltage sweep through the qcm into a device, and will acquire a signal from the device, which will
+						   then be plotted against the input voltage. 
+							
+		"""
+
+		# First, we define an empty output seqeunce, basically an empty list. We also define our voltage sweep parameters
+
+		output_seq_0 = []
+
+		seq_time = 0
+
+		output_0_list = np.linspace(start_points[0], end_points[0], num_steps)
+
+		# print(output_0_list)
+
+		for i in output_0_list:
+			output_seq_0.append(['square', length_per_point/num_steps, i])
+		
+		seq_time += 
 
 		return None
 
-	def run_2D_sweep(self, num_steps, inner_sweep_length, start_points: list, end_points: list, acq_sequencer: int, acquisition_name: str, resolution = 300, plot = False):
+	def run_2D_sweep(self, num_steps, outer_sweep_length, start_points: list, end_points: list, acq_sequencer: int, acquisition_name: str, acquisition_delay = 0, resolution = 300, plot = False):
 
 		"""
 		This function allows the user to create a 2D Voltage Sweep with minimal interaction with Q1ASM and the Qblox cluster.
@@ -90,16 +126,15 @@ class QbloxExperiment:
 		The function takes inputs:
 
 		num_steps:          The number of voltage steps in the sweep for both gates
-		inner_sweep_length: The full duration of a single sweep of the inner loop in seconds
-		start_points:        The starting voltages for the inner and outer sweeps in volts. Input is a list
-		end_points:          The ending voltages for the inner and outer sweeps in volts. Input is a list
+		outer_sweep_length: The full duration of a single sweep of the outer loop in nanoseconds
+		start_points:       The starting voltages for the inner and outer sweeps in volts. Input is a list
+		end_points:         The ending voltages for the inner and outer sweeps in volts. Input is a list
 		acq_sequencer:      The label of the sequencer being used for acquisition
 		acquisition_name:   The name given to the acquisition
+		acquisition_delay:  The amount of time before an acquisition starts in nanoseconds
 		plot:               If True, run_2D_sweep() will create a heat map of the data; Set to False by default 
-		
-
-		and will output a voltage sweep through the qcm into a device, and will acquire a signal from the device, which will
-		then be plotted against the input voltages. 
+							and will output a voltage sweep through the qcm into a device, and will acquire a signal from the device, which will
+							then be plotted against the input voltages. 
 		
 		"""
 
@@ -107,12 +142,14 @@ class QbloxExperiment:
 
 		output_seq_0 = []
 
+		seq_time = 0
+
 		output_0_list = np.linspace(start_points[0], end_points[0], num_steps)
 
 		# print(output_0_list)
 
 		for i in output_0_list:
-			output_seq_0.append(['square', inner_sweep_length/num_steps, i])
+			output_seq_0.append(['square', outer_sweep_length/num_steps, i])
 
 		# Now, we need to define our second output sequence 
 
@@ -123,11 +160,13 @@ class QbloxExperiment:
 		# print(output_1_list)
 
 		for i in output_1_list:
-			output_seq_1.append(['square', inner_sweep_length, i])
+			output_seq_1.append(['square', outer_sweep_length, i])
+
+		seq_time += outer_sweep_length*num_steps # Accounting for length of the sequence
 
 		# Finally, we define our input sequence
 
-		input_seq_0 = [acquisition_name, 0, inner_sweep_length*num_steps] #TODO add a way to choose delay time
+		input_seq_0 = [acquisition_name, acquisition_delay, outer_sweep_length*num_steps]
 
 		# Now, we disconnect any prexisting connections
 
@@ -147,9 +186,11 @@ class QbloxExperiment:
 
 		# Now, we upload our sequences to the modules and specify sequencers		
 
-		qcm_module.sequencer0.sequence(sh.make_output_sequence_square(output_seq_0, module = "qcm", iterations = num_steps))
-		qcm_module.sequencer1.sequence(sh.make_output_sequence_square(output_seq_1, module = "qcm"))
+		qcm_module.sequencer0.sequence(sh.make_output_sequence(output_seq_0, module = "qcm", iterations = num_steps))
+		qcm_module.sequencer1.sequence(sh.make_output_sequence(output_seq_1, module = "qcm"))
 		qrm_module.sequencer0.sequence(sh.make_input_sequence(input_seq_0, resolution = resolution)[0])
+
+		seq_time += 150 # Accounting for ToF
 
 		# Now, we connect the modules to the sequencers
 
@@ -169,7 +210,6 @@ class QbloxExperiment:
 		qrm_module.in0_offset(-I_offset)
 		qrm_module.in1_offset(-Q_offset)
 
-
 		# Then, we enable the sync protocol for all sequencers
 
 		qcm_module.sequencer0.sync_en(True)
@@ -186,8 +226,11 @@ class QbloxExperiment:
 
 		cluster.start_sequencer()
 
-		# TODO Add code to check whether sequence requires sleep time or not; currently sleeps for 5 seconds automatically
-		time.sleep(10)
+		# Convert time from seconds to nanoseconds
+
+		seq_time /= 1e9
+
+		time.sleep(seq_time)
 
 		# Then, we stop the sequencers
 
@@ -283,5 +326,8 @@ class QbloxExperiment:
 			print(qrm_module.get_acquisition_status(0))
 			print(qrm_module.get_assembler_status())
 
-# TODO restart the cluster connection after sweep is complete. This ensures no issues when setting offsets a second time
+			# Resets the connection to the cluster. If not done, the offsets will be incorrect when playing another sequence.
+
+			cluster.reset()
+
 
