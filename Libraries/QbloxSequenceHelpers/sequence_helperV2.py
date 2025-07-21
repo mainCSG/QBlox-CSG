@@ -12,12 +12,12 @@ Tested:			Mar 20, 2025
 
 Author: Kyle MacRobbie
 
-Edits: Made by Ben Van Osch, detailed below
+Edits: Made by Ben Van Osch and Rishabh Iyer, detailed below
 
 1. The first edit was to the make_output_sequence() function, to change condition for using the awg offset 
    for square pulses rather than using the play command. This edit was made because to make a sequence of 
    square pulses that are longer than 65535 ns, you cannot use the upd_param command which has a limit at 
-   65535 ns. Previouslt, make_output_sequence() only decided to switch to waveforms if the length of ramps 
+   65535 ns. Previously, make_output_sequence() only decided to switch to waveforms if the length of ramps 
    was > 16384 ns, but we also needed it to switch if blocks are longer than 16384 ns.
 
 2. The second edit was to introduce a plot_input_multi() function. This is useful if the user wishes to, say,
@@ -35,9 +35,11 @@ Edits: Made by Ben Van Osch, detailed below
    built-in amplifier that we must account for, also has an offset due to ADC thermal effects. This function allows
    the user to quickly calculate the offset and adjust for it in their code.
 
+6. Modified make_rf_sequence and connect_rf_output to set NCO frequency in Q1ASM and LO in QCoDeS. 
+
+7. Added rf_sweep functionality to make_rf_sequence.  
+
 """
-
-
 
 # Imports
 import time
@@ -254,7 +256,7 @@ def make_output_sequence(input:list, module:str, iterations:int = 1, plot = Fals
 				print("Input is not correct! Each voltage step should be a square.")
 				return None
 
-		print(f"The number of square commands in the sequence is: {num_squares}")
+		# print(f"The number of square commands in the sequence is: {num_squares}")
 
 		# Initializing out sequence string
 		
@@ -330,10 +332,17 @@ def make_rf_sequence(input:list, marker = None, iterations = 1):
 	
 		For square pulses
 		[
-			['type', 'length', 'magnitude']
+			['type', 'length', 'magnitude', 'frequency']
+		]
+		
+		For RF Sweeps
+		
+		[
+            ['type', 'length', 'magnitude', 'start freq', 'stop freq', 'steps']
 		]
 
 		Supported types:
+			- 'rf_sweep'
 			- 'square'
 			- 'wait'
 	
@@ -380,10 +389,12 @@ def make_rf_sequence(input:list, marker = None, iterations = 1):
 			
 			awg_offs_range = 32767	# The range of values that can be passed into the Q1ASM command set_awg_offs
 			offset = step[2]	# Voltage to set the offset to
-			offset_q1 = round((offset)*awg_offs_range) # Convert the offset to the Q1ASM value
-
+			frequency = int(step[3])
+			offset_q1 = round((offset/1)*awg_offs_range) # Convert the offset to the Q1ASM value
+			frequency_q1 = frequency*4
 			seq += f"""\n	set_awg_offs	{offset_q1},{offset_q1}""" # Set the offset
-			# Since the maximum wait time for an upd_param command is 65535 ns, we will need multiple commands if there are longer pulses than 65535 ns.
+			seq += f"""\n	set_freq	    {frequency_q1}"""
+            # Since the maximum wait time for an upd_param command is 65535 ns, we will need multiple commands if there are longer pulses than 65535 ns.
 			num_full_waits = math.floor(step[1]/65535) # Number of full waits
 			remainder = step[1]%65535	# Remaining wait time
 			# Adding wait time to the sequence string
@@ -393,16 +404,61 @@ def make_rf_sequence(input:list, marker = None, iterations = 1):
 				seq += f"""\n	upd_param	{remainder}"""
 			seq += f"""\n	set_mrk	0"""
 
+        # RF Sweeps
+		elif step[0] == 'rf_sweep':
+			# Set the marker to the appropriate value
+			if marker == 0:
+				seq += f"""\n   set_mrk {0b1001}"""
+			elif marker == 1:
+				seq += f"""\n	set_mrk	{0b0110}"""
+			elif marker == 'both':
+				seq += f"""\n	set_mrk {0b1111}"""
+			elif marker == None:
+				None
+			else:
+				print("ERROR: marker type not supported. Supported arguements are:\n- 0\n- 1\n- 'both'")
+			
+			awg_offs_range = 32767	# The range of values that can be passed into the Q1ASM command set_awg_offs
+			offset = step[2]	# Voltage to set the offset to
+			frequency_start = int(step[3])
+			frequency_stop = int(step[4])
+			frequency_steps = int(step[5])
+			frequency_inc_q1 = (int((frequency_stop-frequency_start)/(frequency_steps-1)))*4
+			offset_q1 = round((offset/1)*awg_offs_range) # Convert the offset to the Q1ASM value
+			frequency_start_q1 = frequency_start*4
+
+			seq += f""" \n	set_awg_offs {offset_q1},{offset_q1}""" # Set the offset
+			
+			seq += f""" \n   move {frequency_steps},R2	# Loop index
+                        \n nop
+                        \n move {frequency_start_q1},R3	# NCO frequency
+						\n nop"""
+			seq += f""" \n   loopnco: set_freq R3"""
+			# Since the maximum wait time for an upd_param command is 65535 ns, we will need multiple commands if there are longer pulses than 65535 ns.
+			
+			
+			num_full_waits = math.floor(step[1]/65535) # Number of full waits
+			remainder = step[1]%65535	# Remaining wait time
+			# Adding wait time to the sequence string
+			for i in range(num_full_waits):
+				seq += f"""  \n upd_param 65535"""
+			if remainder != 0:
+				seq += f""" \n  upd_param {remainder}"""
+			seq += f"""\n   add R3,{frequency_inc_q1},R3	# Increment the NCO frequency """
+			seq += f"""\n   loop R2,@loopnco"""
+			seq += f"""\n   set_mrk	0"""
+
+			
 		else:
 			print("ERROR: module type not supported by make_sequence()\nSee the docstring at the start of the function for supported module types.")
 			return None
 	
 	# Check if we need to loop:
 	if iterations > 1:
-		seq += f"""\n	loop	R0,@loop"""
+		seq += f"""\n   loop R0,@loop"""
 
 	# Set the offset voltage to 0, turn off the marker and stop the sequencer
-	seq += f"""\n	set_mrk	{0b0000}\n	set_awg_offs	0,0\n	upd_param	4\n	stop"""
+	seq += f"""\n   set_mrk	{0b0000}\n  set_awg_offs 0,0\n	upd_param 4\n	stop"""
 
 	# Adding all information to a sequence dictionary to be passed to the sequencer
 	sequence_dict = {
@@ -414,7 +470,7 @@ def make_rf_sequence(input:list, marker = None, iterations = 1):
 
 	return sequence_dict
 
-def connect_rf_output(module:Module, sequencer:int, output_index:int, nco_freq:int, lo_freq:int):
+def connect_rf_output(module:Module, sequencer:int, output_index:int, lo_freq:int):
 	"""Function that makes a connection to the QCM-RF and sets the NCO and LO frequencies
 	to the specified values"""
 
@@ -422,8 +478,11 @@ def connect_rf_output(module:Module, sequencer:int, output_index:int, nco_freq:i
 	eval(f"module.sequencer{sequencer}.connect_out{output_index}(True)") # Connect to the selected output
 	eval(f"module.sequencer{sequencer}.mod_en_awg(True)") # Enable modulation of the NCO
 	eval(f"module.out{output_index}_lo_en(True)") # Enable modulation of the LO
-	eval(f"module.sequencer{sequencer}.nco_freq({nco_freq})") # Set NCO frequency
 	eval(f"module.out{output_index}_lo_freq({lo_freq})") # Set LO frequency
+	eval(f"module.out0_offset_path0(0)")
+	eval(f"module.out0_offset_path1(0)")
+	eval(f"module.out1_offset_path0(0)")
+	eval(f"module.out1_offset_path0(0)")
 	eval(f"module.sequencer{sequencer}.sync_en(True)") # Enable syncing to other sequencers
 	return None
 
@@ -504,8 +563,13 @@ def make_input_sequence(input:list, iterations:int = 1, resolution = 300):
 		# If the acquisition is more than 16 microsecoonds.
 		
 		num_bins = math.ceil(duration / resolution)
+		
+		repeat_num = math.ceil(resolution/16384)
+			
+		# print(repeat_num, repeat_num*num_bins)
+
 		acquisitions = {
-				f"{input[0]}": {"num_bins": num_bins, "index": 0}
+				f"{input[0]}": {"num_bins": num_bins*repeat_num, "index": 0}
 			}
 
 		# Set up the acquisition sequence
@@ -531,7 +595,7 @@ def make_input_sequence(input:list, iterations:int = 1, resolution = 300):
 
 		# Loop and acquire for however long it needs
 
-		if resolution <= 65535:
+		if resolution <= 16384:
 			seq += f"""\n		move		{num_bins},R1\n		loop:\n		acquire		0,R0,{resolution}\n		add		R0,1,R0\n		loop		R1,@loop\n		stop"""
 		
 			repeat_num = 1
@@ -540,17 +604,13 @@ def make_input_sequence(input:list, iterations:int = 1, resolution = 300):
 
 			# Ensure that the acquisition repeats
 
-			repeat_num = math.ceil(resolution/16384)
-			
-			print(repeat_num)
-
 			seq += f"""\n		move		{num_bins*repeat_num},R1"""
 
 			seq += f"""\n	loop:\n		acquire		0,R0,{int(resolution/repeat_num)}\n		add		R0,1,R0"""
 
 			seq += f"""\n		loop		R1,@loop\n		stop"""
 
-	print(f"Input sequence:\n{seq}")
+	# print(f"Input sequence:\n{seq}")
 
 	# Add the information to the sequence dictionary
 	
@@ -560,6 +620,8 @@ def make_input_sequence(input:list, iterations:int = 1, resolution = 300):
 		"acquisitions": acquisitions,
 		"program": seq,
 	}
+
+	# print(seq)
 
 	return sequence, repeat_num
 
@@ -590,7 +652,6 @@ def plot_input(module:Module, sequencer:int, acquisition_name:str, path = 'both'
 		ax.set_title("QRM input")
 		ax.set_xlabel("Time [ns]")
 		ax.set_ylabel("Input [V]")
-		ax.set_ylim(0.0,0.02)
 
 		# Add a grid to the plot
 		ax.grid(ls = '--')
@@ -621,9 +682,12 @@ def plot_input(module:Module, sequencer:int, acquisition_name:str, path = 'both'
 			print("ERROR: sequencer index invalid")
 			return None
 
-		print(f"resolution in plot_input: {resolution}")
-		data0 = np.array(readout_data[acquisition_name]['acquisition']['bins']['integration']['path0']) / resolution # Extract path 0 data
-		data1 = np.array(readout_data[acquisition_name]['acquisition']['bins']['integration']['path1']) / resolution # Extract path 1 data
+		# print(f"resolution in plot_input: {resolution}")
+
+		repeat_num = math.ceil(resolution/16384)
+
+		data0 = np.array(readout_data[acquisition_name]['acquisition']['bins']['integration']['path0']) / resolution * repeat_num # Extract path 0 data
+		data1 = np.array(readout_data[acquisition_name]['acquisition']['bins']['integration']['path1']) / resolution * repeat_num # Extract path 1 data
 		t = np.arange(resolution / 2, resolution * num_bins + 0.1, resolution)
 
 		# Create plot
@@ -639,7 +703,6 @@ def plot_input(module:Module, sequencer:int, acquisition_name:str, path = 'both'
 		ax.set_title("QRM input")
 		ax.set_xlabel("Time [ns]")
 		ax.set_ylabel("Input [V]")
-		ax.set_ylim(0.0,0.02)
 
 		# Add a grid to the plot
 		ax.grid(ls = '--')
@@ -690,7 +753,7 @@ def plot_input_multi(module:Module, sequencers:list, acquisition_names:list, pat
 			print("ERROR: sequencer index invalid")
 			return None
 
-		print(f"resolution in plot_input: {resolution}")
+		# print(f"resolution in plot_input: {resolution}")
 		data0 = np.array(readout_data[i][acquisition_names[i]]['acquisition']['bins']['integration']['path0']) / resolution # Extract path 0 data
 		data1 = np.array(readout_data[i][acquisition_names[i]]['acquisition']['bins']['integration']['path1']) / resolution # Extract path 1 data
 		t = np.arange(resolution / 2, resolution * num_bins[i] + 0.1, resolution)
@@ -728,7 +791,7 @@ def marker_only_sequence():
 		"waveforms": {},
 		"weights": {},
 		"acquisitions": {},
-		"program": f"""	wait_sync	4\n	set_mrk	{0b1001}\n	upd_param	500\n	set_mrk	{0b0000}\n	upd_param	4\n	stop"""
+		"program": f"""	wait_sync	4\n	set_mrk	{15}\n	upd_param	500\n	set_mrk	{0b0000}\n	upd_param	4\n	stop"""
 	}
 	return sequence_dict
 
@@ -830,17 +893,17 @@ def acquire_scope_and_calc_offsets(module:Module) -> tuple[float, float]:
 	Q_data = np.array(single_acq["single"]["acquisition"]["scope"]["path1"]["data"])
 
     # Plot results
-	fig, ax = plt.subplots(1, 1)
-	ax.plot(I_data, label="I")
-	ax.plot(Q_data, label="Q")
-	ax.set_xlabel("Time (ns)", fontsize=20)
-	ax.set_ylabel("Relative amplitude", fontsize=20)
-	plt.legend()
-	plt.show()
+	# fig, ax = plt.subplots(1, 1)
+	# ax.plot(I_data, label="I")
+	# ax.plot(Q_data, label="Q")
+	# ax.set_xlabel("Time (ns)", fontsize=20)
+	# ax.set_ylabel("Relative amplitude", fontsize=20)
+	# plt.legend()
+	# plt.show()
 
     # Print mean offset values
 	I_offset, Q_offset = np.mean(I_data), np.mean(Q_data)
-	print(f"I Offset : {I_offset*1e3:.3f} mV \nQ Offset : {Q_offset*1e3:.3f} mV")
+	# print(f"I Offset : {I_offset*1e3:.3f} mV \nQ Offset : {Q_offset*1e3:.3f} mV")
 
 	time.sleep(1)
 

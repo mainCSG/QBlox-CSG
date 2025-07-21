@@ -1839,5 +1839,5 @@
             "index": 4
         }
     },
-    "program": "\nset_mrk 15\nplay    0,0,4     #Play waveforms and wait 4ns. Parameters: waveform index (from dict) on path 0, waveform index (from dict) on path 1, wait (in ns)\nacquire 4,0,4     #Acquire waveforms and wait remaining duration of 16380 ns. Parameters: acquisition index (from dict), data bin, Duration of acq (in ns)\nstop              #Stop.\n"
+    "program": "\nset_mrk 15\nplay    0,1,4     #Play waveforms and wait 4ns. Parameters: waveform index (from dict) on path 0, waveform index (from dict) on path 1, wait (in ns)\nacquire 4,0,4     #Acquire waveforms and wait remaining duration of 16380 ns. Parameters: acquisition index (from dict), data bin, Duration of acq (in ns)\nstop              #Stop.\n"
 }

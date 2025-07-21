@@ -1,0 +1,11 @@
+{
+    "waveforms": {},
+    "weights": {},
+    "acquisitions": {
+        "acq": {
+            "num_bins": 200,
+            "index": 0
+        }
+    },
+    "program": "\n    move 10, R2\n\navg_loop:\n    move    0, R0          # frequency\n    move    0, R1          # step counter\n\n    sub R0, 2000000000, R0\n    \n    reset_ph\n    set_freq        R0\n    upd_param       200\n\nnco_set:\n    set_freq        R0                           # Set the frequency\n    add             R0, 20000000, R0  # Update the frequency register\n    upd_param       200                          # Wait for time of flight\n    acquire         0, R1, 16384\n    add             R1, 1, R1\n    nop\n    jlt             R1, 200, @nco_set      # Loop over all frequencies\n\n    loop            R2, @avg_loop\n\n    stop                                  # Stop\n"
+}
