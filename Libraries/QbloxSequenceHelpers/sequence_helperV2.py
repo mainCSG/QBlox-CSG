@@ -418,27 +418,33 @@ def make_rf_sequence(input:list, marker = None, iterations = 1):
 			else:
 				print("ERROR: marker type not supported. Supported arguements are:\n- 0\n- 1\n- 'both'")
 			
-			awg_offs_range = 32767	# The range of values that can be passed into the Q1ASM command set_awg_offs
-			offset = step[2]	# Voltage to set the offset to
+			# Set the offsets
+			awg_offs_range = 32767
+			offset = step[2]
+
+			# Set the frequencies
 			frequency_start = int(step[3])
 			frequency_stop = int(step[4])
 			frequency_steps = int(step[5])
-			frequency_inc_q1 = (int((frequency_stop-frequency_start)/(frequency_steps-1)))*4
-			offset_q1 = round((offset/1)*awg_offs_range) # Convert the offset to the Q1ASM value
-			frequency_start_q1 = frequency_start*4
 
-			seq += f""" \n	set_awg_offs {offset_q1},{offset_q1}""" # Set the offset
+			# Set the mapping to Q1ASM
+			offset_q1 = round((offset/1)*awg_offs_range) 
+			frequency_start_q1 = frequency_start*4
+			frequency_inc_q1 = (int((frequency_stop-frequency_start)/(frequency_steps-1)))*4
+
+			# Q1ASM Code
+			seq += f""" \n	set_awg_offs {offset_q1},{offset_q1}""" 
 			
 			seq += f""" \n   move {frequency_steps},R2	# Loop index
                         \n nop
                         \n move {frequency_start_q1},R3	# NCO frequency
 						\n nop"""
 			seq += f""" \n   loopnco: set_freq R3"""
+
 			# Since the maximum wait time for an upd_param command is 65535 ns, we will need multiple commands if there are longer pulses than 65535 ns.
-			
-			
 			num_full_waits = math.floor(step[1]/65535) # Number of full waits
 			remainder = step[1]%65535	# Remaining wait time
+
 			# Adding wait time to the sequence string
 			for i in range(num_full_waits):
 				seq += f"""  \n upd_param 65535"""
@@ -448,7 +454,6 @@ def make_rf_sequence(input:list, marker = None, iterations = 1):
 			seq += f"""\n   loop R2,@loopnco"""
 			seq += f"""\n   set_mrk	0"""
 
-			
 		else:
 			print("ERROR: module type not supported by make_sequence()\nSee the docstring at the start of the function for supported module types.")
 			return None

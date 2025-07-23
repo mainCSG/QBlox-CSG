@@ -103,6 +103,10 @@ class QbloxExperiment:
 							
 		"""
 
+		# Before anything, we have to set up the data variable to hold the data from each repeat
+
+		dataI = []
+
 		# First, we define an empty output seqeunce, basically an empty list. We also define our voltage sweep parameters
 
 		output_seq_0 = []
@@ -205,9 +209,90 @@ class QbloxExperiment:
 			
 			sh.plot_input(module = qrm_module, sequencer = acq_sequencer, acquisition_name = acquisition_name)
 
+			X = np.asarray(output_0_list)
+
+			# This section retrieves the data from the acquisition
+
+			qrm_module.get_acquisition_status(acq_sequencer) # Wait for the sequencer to stop with a timeout period of one minute.
+			qrm_module.store_scope_acquisition(acq_sequencer, acquisition_name) # Move acquisition data from temporary memory to acquisition list.
+			readout_data = qrm_module.get_acquisitions(acq_sequencer) # Get acquisition list from instrument.
+
+			if acq_sequencer == 0:
+				resolution = qrm_module.sequencer0.integration_length_acq()
+			elif acq_sequencer == 1:
+				resolution = qrm_module.sequencer1.integration_length_acq()
+			elif acq_sequencer == 2:
+				resolution = qrm_module.sequencer2.integration_length_acq()
+			elif acq_sequencer == 3:
+				resolution = qrm_module.sequencer3.integration_length_acq()
+			elif acq_sequencer == 4:
+				resolution = qrm_module.sequencer4.integration_length_acq()
+			elif acq_sequencer == 5:
+				resolution = qrm_module.sequencer5.integration_length_acq()
+			else:
+				print("ERROR: sequencer index invalid")
+				return None
+
+			# Find the number of bins to determine what kind of acquistion we are doing.
+			num_bins = len(readout_data[acquisition_name]['acquisition']['bins']['integration']['path0'])
+
+			# print("number of bins: ",num_bins)
+
+			if num_bins == 1:
+
+				# print(f"resolution in plot_input: {resolution}")
+				# If it is a single acquisition with resolution of 1 ns
+				data0 = readout_data[acquisition_name]['acquisition']['scope']['path0']['data'] # Extract path 0 data
+
+			else:
+				
+				repeat_num = sh.make_input_sequence(input_seq_0, resolution = resolution)[1]
+
+				# print(f"resolution in plot_input: {resolution}")
+
+				data0 = np.array(readout_data[acquisition_name]['acquisition']['bins']['integration']['path0']) / resolution # Extract path 0 data
+
+			#print(data0)
+
+			#print(data0.shape)
+
+			# Now, we add this sweeps data to the data list
+
+			dataI.append(data0)
+
 		# Resets the connection to the cluster. If not done, the offsets will be incorrect when playing another sequence.
 
 		cluster.reset()
+
+		for data0 in dataI:
+
+			# Now, we have to reshape the data to be the same shape as X and Y
+
+			if data0.shape[0] % (len(output_0_list)) != 0:
+				raise ValueError(f"The amount of data taken is unable to be shaped into {np.shape(X)}")
+				
+			data0_reshaped = data0.reshape(X.shape[0], repeat_num)
+
+			data0_final = data0_reshaped.mean(axis=1) * repeat_num
+
+			#data0_final = avg_data0.reshape(X.shape[0],X.shape[1])
+
+			# Now, we save the data to a csv file
+
+			save_data = []
+
+			for i, x in enumerate(output_0_list):
+				save_data.append([x, data0_final[i]])
+
+			experiment_time = datetime.now()
+
+			timestamp = experiment_time.strftime('%Y-%m-%d_%H-%M%S')
+			
+			filename = f"Qblox_Measurement_{timestamp}.csv"
+
+			full_path = os.path.join(save_path, filename)
+
+			np.savetxt(full_path ,save_data, delimiter = ',', fmt = '%s', header = 'QCM Output 1, QCM Output 2, QRM Input Path Q, QRM Input Path I', comments = '')
 
 		return None
 
@@ -346,7 +431,7 @@ class QbloxExperiment:
 			qrm_module.stop_sequencer(0)
 
 
-		# If plot is True, then this part of the method will create a heat map as a function of the voltages
+			# If plot is True, then this part of the method will create a heat map as a function of the voltages
 
 			if plot:
 			
