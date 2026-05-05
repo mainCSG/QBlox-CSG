@@ -1,0 +1,26 @@
+2025-11-04 18:32:31,086 note  | 
+2025-11-04 18:32:31,086 note  | --- Qblox Configuration Manager version 0.2.0 ---
+2025-11-04 18:32:31,086 note  | 
+2025-11-04 18:32:31,086 note  | Trying to connect to "129.97.9.55"...
+2025-11-04 18:32:31,086 info  | Resolving device identifier "129.97.9.55"...
+2025-11-04 18:32:31,086 info  | "129.97.9.55" is a valid IP address; skipping name resolution.
+2025-11-04 18:32:31,086 info  | Trying to connect to application (port 5025)...
+2025-11-04 18:32:31,209 note  | "129.97.9.55" is reachable via 129.97.9.55:5025 using SCPI
+2025-11-04 18:32:31,209 info  |   Connecting to            : 129.97.9.55
+2025-11-04 18:32:31,209 info  |   Via protocol             : SCPI, via TCP port 5025
+2025-11-04 18:32:31,209 info  |   Configuration scope      : entire instrument
+2025-11-04 18:32:31,209 info  |   Server version           : 0.4.0
+2025-11-04 18:32:31,209 info  |   Client version           : 0.2.0
+2025-11-04 18:32:31,209 info  |   -------------------------:-------------------------
+2025-11-04 18:32:31,209 info  |   Device type              : qblox cluster_mm
+2025-11-04 18:32:31,209 info  |   Device name              : cluster-mm
+2025-11-04 18:32:31,209 info  |   Serial number            : 00015_2251_003
+2025-11-04 18:32:31,209 info  |   IP configuration         : 129.97.9.55/16
+2025-11-04 18:32:31,209 info  |   Submodule types          : cluster_qrm, cluster_qcm
+2025-11-04 18:32:31,209 info  |   Application version      : 0.10.0, built on 2024-12-19T10:09:20 from git hash 5948d50b
+2025-11-04 18:32:31,209 info  |   FPGA firmware version    : 0.10.0, built on 2024-12-13T10:09:35 from git hash 849d08f5
+2025-11-04 18:32:31,209 info  |   Kernel module version    : 0.10.0, built on 2024-12-19T10:09:20 from git hash 5948d50b
+2025-11-04 18:32:31,209 info  |   Config. manager version  : 0.4.0, built on 2024-12-19T10:09:20 from git hash 5948d50b
+2025-11-04 18:32:31,209 note  | 
+2025-11-04 18:32:31,209 note  | Nothing left to do.
+2025-11-04 18:32:31,209 info  | Closing all registered instruments

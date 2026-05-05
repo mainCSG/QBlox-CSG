@@ -3643,7 +3643,7 @@
             "index": 1
         },
         "large": {
-            "num_bins": 16384,
+            "num_bins": 3000000,
             "index": 2
         },
         "avg": {
@@ -3655,5 +3655,5 @@
             "index": 4
         }
     },
-    "program": "\n      move    0,R0        #Loop iterator.\n      nop\n\nloop: acquire 0,R0,1200  #Acquire bins and store them in \"non_weighed\" acquisition.\n      add     R0,1,R0     #Increment iterator\n      nop                 #Wait a cycle for R0 to be available.\n      jlt     R0,10,@loop #Run until number of iterations is done.\n\n      stop                #Stop.\n"
+    "program": "\n      move    0,R0        #Loop iterator.\n      nop\n\nloop: acquire 0,R0,1200   #Acquire bins and store them in \"non_weighed\" acquisition.\n      add     R0,1,R0     #Increment iterator\n      nop                 #Wait a cycle for R0 to be available.\n      jlt     R0,10,@loop #Run until number of iterations is done.\n\n      stop                #Stop.\n"
 }

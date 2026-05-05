@@ -1,0 +1,37 @@
+2025-07-24 14:56:23,292 note  | 
+2025-07-24 14:56:23,293 note  | --- Qblox Configuration Manager version 0.2.0 ---
+2025-07-24 14:56:23,293 note  | 
+2025-07-24 14:56:23,293 note  | Trying to connect to "192.168.0.2"...
+2025-07-24 14:56:23,293 info  | Resolving device identifier "192.168.0.2"...
+2025-07-24 14:56:23,294 info  | "192.168.0.2" is a valid IP address; skipping name resolution.
+2025-07-24 14:56:23,294 info  | Trying to connect to application (port 5025)...
+2025-07-24 14:56:24,295 info  | Failed to connect to application (timed out), falling back to cfg_man.
+2025-07-24 14:56:24,295 info  | Trying to connect to configuration manager (port 5026)...
+2025-07-24 14:56:27,306 ERROR | RuntimeError: Failed to connect to "192.168.0.2", determined to be at 192.168.0.2.
+2025-07-24 14:56:27,306 info  | Closing all registered instruments
+2025-07-24 14:56:43,724 note  | 
+2025-07-24 14:56:43,724 note  | --- Qblox Configuration Manager version 0.2.0 ---
+2025-07-24 14:56:43,725 note  | 
+2025-07-24 14:56:43,725 note  | Trying to connect to "129.97.9.55"...
+2025-07-24 14:56:43,725 info  | Resolving device identifier "129.97.9.55"...
+2025-07-24 14:56:43,725 info  | "129.97.9.55" is a valid IP address; skipping name resolution.
+2025-07-24 14:56:43,725 info  | Trying to connect to application (port 5025)...
+2025-07-24 14:56:43,850 note  | "129.97.9.55" is reachable via 129.97.9.55:5025 using SCPI
+2025-07-24 14:56:43,850 info  |   Connecting to            : 129.97.9.55
+2025-07-24 14:56:43,850 info  |   Via protocol             : SCPI, via TCP port 5025
+2025-07-24 14:56:43,851 info  |   Configuration scope      : entire instrument
+2025-07-24 14:56:43,851 info  |   Server version           : 0.4.0
+2025-07-24 14:56:43,851 info  |   Client version           : 0.2.0
+2025-07-24 14:56:43,851 info  |   -------------------------:-------------------------
+2025-07-24 14:56:43,852 info  |   Device type              : qblox cluster_mm
+2025-07-24 14:56:43,852 info  |   Device name              : cluster-mm
+2025-07-24 14:56:43,852 info  |   Serial number            : 00015_2251_003
+2025-07-24 14:56:43,852 info  |   IP configuration         : 129.97.9.55/16
+2025-07-24 14:56:43,852 info  |   Submodule types          : cluster_qrm, cluster_qcm
+2025-07-24 14:56:43,853 info  |   Application version      : 0.10.0, built on 2024-12-19T10:09:20 from git hash 5948d50b
+2025-07-24 14:56:43,853 info  |   FPGA firmware version    : 0.10.0, built on 2024-12-13T10:09:35 from git hash 849d08f5
+2025-07-24 14:56:43,853 info  |   Kernel module version    : 0.10.0, built on 2024-12-19T10:09:20 from git hash 5948d50b
+2025-07-24 14:56:43,853 info  |   Config. manager version  : 0.4.0, built on 2024-12-19T10:09:20 from git hash 5948d50b
+2025-07-24 14:56:43,853 note  | 
+2025-07-24 14:56:43,853 note  | Nothing left to do.
+2025-07-24 14:56:43,854 info  | Closing all registered instruments

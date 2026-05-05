@@ -1,18 +1,18 @@
 """
-seqeuence_helper.py		V 2.0
+seqeuence_helper.py		V 3.0
 
 This is a library of useful functions to make Qblox sequencing faster and more user-friendly.
 See sequence_helper_tutorial.ipynb to learn how to use this library.
 
-Created: 		Nov 28, 2024
-Last updated: 	Mar 20, 2025
-Tested:			Mar 20, 2025
-				On firmware:			0.9.2
-				On qblox-instruments:	0.14.2	
+Created: 		Apr 27, 2026
+Last updated: 	Apr 27, 2026
+Tested:			Apr 27, 2026
+				On firmware:			2.0.0
+				On qblox-instruments:	1.2.1	
 
 Author: Kyle MacRobbie
 
-Edits: Made by Ben Van Osch, Rishabh Iyer, and Zeyu Lu, detailed below
+Edits: Made by Ben Van Osch, Rishabh Iyer, Zeyu Lu, and Dhruv Shah detailed below
 
 1. The first edit was to the make_output_sequence() function, to change condition for using the awg offset 
    for square pulses rather than using the play command. This edit was made because to make a sequence of 
@@ -38,6 +38,8 @@ Edits: Made by Ben Van Osch, Rishabh Iyer, and Zeyu Lu, detailed below
 6. Modified make_rf_sequence and connect_rf_output to set NCO frequency in Q1ASM and LO in QCoDeS. 
 
 7. Added rf_sweep functionality to make_rf_sequence.  
+
+8. Updated functions to have generalized functionality on all instruments for both control and readout.
 
 """
 
@@ -224,7 +226,7 @@ def make_output_sequence(input:list, module:str, iterations:int = 1, plot = Fals
 
 			if step_type == "square":
 				offset = step[2]
-				offset_q1 = round((offset/module_range)*awg_offs_range*0.9575) # Convert the offset to the Q1ASM value
+				offset_q1 = round((offset/module_range)*awg_offs_range) # Convert the offset to the Q1ASM value
 				temp_str = f"""\n	set_awg_offs	{offset_q1},{offset_q1}\n	upd_param	{step_len}""" # Add the step to our sequence string
 
 			else:
@@ -514,12 +516,11 @@ def make_input_sequence(input:list, iterations:int = 1, resolution = 300):
 	if duration <= 16384:
 		repeat_num = 1
 
-		'''if resolution != 1:
-			print(f"Resolution Error: Your acquisition is: {duration} ns, which is equal to or less than 16 384 ns. Please set your resolution to 1 ns.")
-			return None'''
+		if resolution != 1:
+			print(f"Resolution Error: Your acquisition is: {duration} ns, which is equal to or shorter than 16 384 ns. Please set your resolution to 1 ns.")
+			return None
 		
 		# Set up the acquisition
-		
 		acquisitions = {
 			f"{input[0]}": {"num_bins": 1, "index": 0}
 		}
@@ -535,7 +536,7 @@ def make_input_sequence(input:list, iterations:int = 1, resolution = 300):
 
 		# Set up the sequence
 		
-		seq += f"""\n	wait_sync	4\n  wait      150"""
+		seq += f"""\n	wait_sync	4\n		wait      150"""
 
 		delay = int(input[1])
 		
@@ -556,7 +557,7 @@ def make_input_sequence(input:list, iterations:int = 1, resolution = 300):
 		
 		# Add the acquire command
 		
-		seq += f"""\n	acquire	0,0,{duration}"""
+		seq += f"""\n 	acquire		0,0,{duration}"""		
 
 		# Check if we need to loop
 		
@@ -569,12 +570,14 @@ def make_input_sequence(input:list, iterations:int = 1, resolution = 300):
 	
 	else:
 		# If the acquisition is more than 16 microseconds.
-		
+		if resolution < 250:
+			raise ValueError(f"Resolution Error: Your acquisition is: {duration} ns, which is longer than 16 384 ns. Please set your resolution to at least 250 ns.")
+
 		num_bins = math.ceil(duration / resolution)
 
 		repeat_num = math.ceil(resolution/16384)
-			
-		print(repeat_num, num_bins, repeat_num*num_bins)
+
+		print(f"duration: {duration}, resolution: {resolution}, number of bins: {num_bins}")
 
 		acquisitions = {
 				f"{input[0]}": {"num_bins": num_bins*repeat_num, "index": 0}
@@ -597,9 +600,9 @@ def make_input_sequence(input:list, iterations:int = 1, resolution = 300):
 			# Adding the wait time to the sequence string
 			
 			for i in range(num_full_waits):
-				seq += f"""\n	wait	65535"""
+				seq += f"""\n		wait		65535"""
 			if remainder != 0:
-				seq += f"""\n	wait	{remainder}"""
+				seq += f"""\n		wait		{remainder}"""
 
 		# Loop and acquire for however long it needs
 
@@ -633,7 +636,7 @@ def make_input_sequence(input:list, iterations:int = 1, resolution = 300):
 
 	return sequence, repeat_num
 
-def plot_input(module, sequencer:int, acquisition_name:str, acquisition_time:int, path = 'both', save_path = None, filename = None):
+def plot_input(module, sequencer:int, acquisition_name:str, acquisition_time:int, repeats:int, path = 0, save_path = None, filename = None):
 	module.get_acquisition_status(sequencer) # Wait for the sequencer to stop with a timeout period of one minute.
 	module.store_scope_acquisition(sequencer, acquisition_name) # Move acquisition data from temporary memory to acquisition list.
 	readout_data = module.get_acquisitions(sequencer) # Get acquisition list from instrument.
@@ -720,13 +723,12 @@ def plot_input(module, sequencer:int, acquisition_name:str, acquisition_time:int
 			print("ERROR: sequencer index invalid")
 			return None
 
-		# print(f"resolution in plot_input: {resolution}")
-
 		repeat_num = math.ceil(resolution/16384)
 
 		data0 = np.array(readout_data[acquisition_name]['acquisition']['bins']['integration']['path0']) / resolution * repeat_num # Extract path 0 data
 		data1 = np.array(readout_data[acquisition_name]['acquisition']['bins']['integration']['path1']) / resolution * repeat_num # Extract path 1 data
-		t = np.arange(resolution / 2, resolution * num_bins + 0.1, resolution)
+		
+		t = np.arange(resolution, resolution * num_bins + 0.1, resolution)
 
 		# Create plot
 		fig, ax = plt.subplots(1, 1, figsize = (14, 4))
@@ -734,7 +736,7 @@ def plot_input(module, sequencer:int, acquisition_name:str, acquisition_time:int
 		#print(data0[-1])
 		#print(data0[-2])
 		data0[-1] = data0[-2]
-
+		
 		# Plot both paths data
 		if path == 0 or path == 'both':
 			ax.plot(t, data0, alpha = 1.0, label = "Path 0")
@@ -896,8 +898,8 @@ def connect_input(module, sequencer:int, input_index:int, path:int, resolution =
 	
 	eval(f"module.sequencer{sequencer}.delete_acquisition_data(all = True)") # Delete the previous acquisition
 	
-	#if resolution == 1:
-		#eval(f"module.sequencer{sequencer}.integration_length_acq({4})") # Set the integration length / resolution
+	'''if resolution == 1:
+		eval(f"module.sequencer{sequencer}.integration_length_acq({4})") # Set the integration length / resolution'''
 	if resolution != 1:
 		eval(f"module.sequencer{sequencer}.integration_length_acq({resolution})") # Set the integration length / resolution
 	

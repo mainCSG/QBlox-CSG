@@ -1,18 +1,22 @@
 """
-benchmarking.py V 2.0
+benchmarking.py V 3.0
 
 This library will be updated periodically when benchmarking experiments with Qblox are developed. These methods will
 be designed to streamline the process of preparing a Quantum Dot device for experiments.
 
 You may also use this file in tandem with the benchmarking.ipynb to get a good understanding of how this library works.
 
-Created:		Feb 06, 2025
-Last Updated:	Aug 10, 2025
-Tested:         Aug 10, 2025
-				On firmware:			0.12.0 ## 0.12.0 Hs had issues with returning incomplete data on Quantify, not sure about regular acquisitions
-				On qblox-instruments:	0.17.0	
+Created:		Apr 27, 2026
+Last Updated:	Apr 27, 2026
+Tested:         Apr 27, 2026
+				On firmware:			2.0.0 
+				On qblox-instruments:	1.2.1	
 
 Author: Ben Van Osch
+
+Edits: Made by Dhruv Shah detailed below
+
+1. Updated functions to have generalized functionality on all instruments for both control and readout.
 
 """
 
@@ -31,9 +35,9 @@ from qblox_instruments import Cluster, SpiRack, ClusterType
 from zhinst.toolkit import Session
 import sys
 sys.path.append(r"C:\\Users\\coher\\Documents\\GitHub\\QBlox-CSG\\Libraries\\Qblox Sequence Helpers")
-import sequence_helperV2 as sh
+import sequence_helperV3 as sh
 import yaml
-import benchmarking as bm
+import benchmarkingV3 as bm
 import time
 import h5py
 
@@ -1340,7 +1344,7 @@ class QbloxExperiment:
 						acquisition_time: int,
 						acquisition_delay: float = 0.0,
 						acquisition_resolution: int = 1,
-						repeats: int = 0,    
+						repeats: list[int] = [],    
 						voltage_configuration: dict[str,tuple] = {},
 						plot = False
 						):
@@ -1356,8 +1360,8 @@ class QbloxExperiment:
 			time_between_pulses:    The set time between each square pulse, if repeats is non-zero
 			acquisition_time:       Duration of acquisition
 			acquisition_delay:      The amount of time before an acquisition starts in nanoseconds
-			acquisition_resolution: The resolution of your acquisition. If duration is under 16 384 ns use 1 ns resolution for best results
-			repeats:                The number of times a sequence is repeated
+			acquisition_resolution: The resolution of your acquisition. If duration is under 16 384 ns, highest resolution of 1 ns is used no matter what. If duration is longer then minimum resolution needed is 250ns
+			repeats:                The number of times a sequence is repeated for each output
 			voltage_configuration:  The DC voltages set by the Spi Rack before the sweep is performed
 			plot:                   If True, run_2D_sweep() will create a heat map of the data; Set to False by default 
 									and will output a voltage sweep through the qcm into a device, and will acquire a signal from the device, which will
@@ -1370,7 +1374,6 @@ class QbloxExperiment:
 			dataI = []
 
 			# First, we obtain all the names for each dac if the Spi Rack is connected
-			
 			if self.config_data['spirack']['connected']:
 
 				dac_name_list = list(self.dac_name_Mods_and_Dacs.keys())
@@ -1399,6 +1402,9 @@ class QbloxExperiment:
 					curr_voltage = curr_dac.voltage()
 					print(f"{info[1]} of {info[0]} has been set to: {curr_voltage} V")
 
+			if repeats == []:
+				repeats = [1] * len(qcm_output_names)
+
 			# First, we define an empty output seqeunce, as a dictionary. We also define our voltage sweep parameters
 
 			output_sequences = {}
@@ -1410,10 +1416,10 @@ class QbloxExperiment:
 
 			# Here, we check that the lists of parameters have the same length and that no list has length greater than 4
 
-			if len(qcm_output_names) != len(pulse_amplitudes) != len(pulse_lengths) != len(times_between_pulses):
-				raise ValueError("There is a mismatch in the number of parameters set in each category. Please ensure that all names and pulse parameter numbers match")
+			if len(qcm_output_names) != len(pulse_amplitudes) != len(pulse_lengths) != len(times_between_pulses) != len(repeats):
+				raise ValueError("There is a mismatch in the number of parameters set in each category. Please ensure that lengths of lists for all names and pulse parameter numbers match")
 
-			for i in [len(qcm_output_names), len(pulse_amplitudes), len(pulse_lengths), len(times_between_pulses)]:
+			for i in [len(qcm_output_names), len(pulse_amplitudes), len(pulse_lengths), len(times_between_pulses), len(repeats)]:
 				if i > 4:
 					raise ValueError("One of the specified pulse parameters has more than 4 arguments. Please have a maximum of 4 arguments per parameter.")
 
@@ -1431,15 +1437,13 @@ class QbloxExperiment:
 			
 			print(output_sequences)
 
-			for i in pulse_lengths:
-				seq_time += i
-			for i in times_between_pulses:
-				seq_time += i
+			seq_time += max(pulse_lengths)*max(repeats)
+			seq_time += max(times_between_pulses)*max(repeats)
 
 			# Now, we define our input sequence, if plotting has been enabled
 
 			if plot:
-				input_seq = ['acq_0', acquisition_delay, (acquisition_time)*repeats]
+				input_seq = ['acq_0', acquisition_delay, (acquisition_time)*repeats[0]]
 
 			# Now, we disconnect any prexsisting connections
 
@@ -1467,7 +1471,7 @@ class QbloxExperiment:
 				output_num = qcm_output_names[i].replace("O", "")
 				qcm_curr_sequencer = getattr(qcm_module, "sequencer" + str(int(output_num) - 1))
 				qcm_curr_sequence = getattr(qcm_curr_sequencer, "sequence")
-				qcm_curr_sequence(sh.make_output_sequence(output_seq, module = "qcm", iterations = repeats))
+				qcm_curr_sequence(sh.make_output_sequence(output_seq, module = "qcm", iterations = repeats[i]))
 
 			if plot:
 				qrm_module.sequencer0.sequence(sh.make_input_sequence(input_seq, resolution=acquisition_resolution)[0]) #TODO Replace time per point
@@ -1512,27 +1516,23 @@ class QbloxExperiment:
 
 			# Then, we enable the sync protocol for all sequencers
 
-			qcm_module.sequencer0.sync_en(True)
-			qcm_module.sequencer1.sync_en(True)
-
-			print(qcm_module.get_sequencer_status(0))
-			print(qcm_module.get_sequencer_status(1))
-			print(qrm_module.get_sequencer_status(0))
-
+			for name in qcm_output_names:
+				output_num = name.replace("O", "")
+				curr_sequencer = getattr(qcm_module, "sequencer" + str(int(output_num) - 1))
+				curr_sequencer.sync_en(True)
+				print(qcm_module.get_sequencer_status(int(output_num) - 1))
+			
 			if plot:
 				qrm_module.sequencer0.sync_en(True)
+				print(qrm_module.get_sequencer_status(0))
 			
-			'''rf_module.sequencer0.sync_en(True)
-			rf_module.sequencer1.sync_en(True)
-			rf_module.sequencer2.sync_en(True)
-			rf_module.sequencer3.sync_en(True)'''
+			rf_module.sequencer0.sync_en(True)
 
 			# Here we arm the sequencers
-
-			qcm_module.arm_sequencer()
-
-			print(qcm_module.get_sequencer_status(0))
-			print(qcm_module.get_sequencer_status(1))
+			for name in qcm_output_names:
+				output_num = name.replace("O", "")
+				qcm_module.arm_sequencer(int(output_num) - 1)
+				print(qcm_module.get_sequencer_status(int(output_num) - 1))
 
 			if plot:
 				qrm_module.arm_sequencer()
@@ -1552,10 +1552,10 @@ class QbloxExperiment:
 
 			# Then, we stop the sequencers
 
-			qcm_module.stop_sequencer()
-
-			print(qcm_module.get_sequencer_status(0))
-			print(qcm_module.get_sequencer_status(1))
+			for name in qcm_output_names:
+				output_num = name.replace("O", "")
+				qcm_module.stop_sequencer(int(output_num) - 1)
+				print(qcm_module.get_sequencer_status(int(output_num) - 1))
 
 			if plot:
 				qrm_module.stop_sequencer()
@@ -1593,7 +1593,7 @@ class QbloxExperiment:
 
 				filename = f"{timestamp}Square_Pulse_{pulse_amplitudes}_{pulse_lengths}_{times_between_pulses}"
 
-				sh.plot_input(module = qrm_module, sequencer = 0, acquisition_name = 'acq_0', acquisition_time = acquisition_time, save_path = self.save_path, filename = filename)
+				sh.plot_input(module = qrm_module, sequencer = 0, acquisition_name = 'acq_0', acquisition_time = acquisition_time, repeats = repeats[0], save_path = self.save_path, filename = filename)
 
 				# This section retrieves the data from the acquisition
 
@@ -1603,14 +1603,8 @@ class QbloxExperiment:
 
 				resolution = qrm_module.sequencer0.integration_length_acq()
 
-				'''if resolution == time_per_point: #TODO Replace time per point
-					pass
-				else:
-					time_per_point = resolution'''
-
 				# Find the number of bins to determine what kind of acquistion we are doing.
 				num_bins = len(readout_data['acq_0']['acquisition']['bins']['integration']['path0'])
-
 				# print("number of bins: ",num_bins)
 
 				if num_bins == 1:
@@ -1642,9 +1636,16 @@ class QbloxExperiment:
 
 			cluster.reset()
 
+			if acquisition_time*repeats > 100e6:
+				for i in range(10):
+
+					time.sleep(5.0)
+
+					cluster.reset()
+
 			return None
 
-	def run_square_program(self,
+	def run_pulse_program(self,
 						  pulse_setup: dict[str, list],
 						  acquisition_time: float = 0.0,
 						  acquisition_delay: float = 0.0,
@@ -1670,7 +1671,7 @@ class QbloxExperiment:
 									Be sure to include 0 amplitude steps in between pulses and at the end
 		acquisition_time:       The amount of time to acquire for in nanoseconds
 		acquisition_delay:      The amount of time before an acquisition starts in nanoseconds
-		acquisition_resolution: The resolution of your acquisition. If duration is under 16 384 ns use 1 ns resolution for best results
+		acquisition_resolution: The resolution of your acquisition. If duration is under 16 384 ns, highest resolution of 1 ns is used no matter what. If duration is longer then minimum resolution needed is 250ns
 		repeats:                The number of times a sequence is repeated
 		voltage_configuration:  The DC voltages set by the Spi Rack before the sweep is performed
 		plot:                   If True, run_2D_sweep() will create a heat map of the data; Set to False by default 
@@ -1684,10 +1685,10 @@ class QbloxExperiment:
 		dataI = []
 
 		# First, we obtain all the names for each dac if the Spi Rack is connected
-		
 		if self.config_data['spirack']['connected']:
 
 			dac_name_list = list(self.dac_name_Mods_and_Dacs.keys())
+			print(dac_name_list)
 
 			# Then, we determine which dacs are being set in the provided voltage configuration
 
@@ -1747,6 +1748,18 @@ class QbloxExperiment:
 				
 				elif step[0] == "ramp" and (abs(step[-1]) > 2.5 or abs(step[-2]) > 2.5 or abs(step[-3]) > 2.5):
 					raise ValueError(f"The ramp pulse start, stop, or voltage step size set in Step {j+1} for O{i+1} is above 2.5 V. The QCM can only output +-2.5 V. Please input a valid pulse amplitude.")
+				
+				# Here, we check that the ramp has the correct sign on the step size
+
+				if step[0] == "ramp":
+
+					if step[2] > step[3]:
+						if step[4] > 0:
+							raise ValueError(f"A positive step size was given for a decreasing ramp in Step {j+1}. Please give a negative step size.")
+						
+					if step[2] < step[3]:
+						if step[4] < 0:
+							raise ValueError(f"A negative step size was given for a increasing ramp in Step {j+1}. Please give a positive step size.")
 				
 				# Here, we find the total duration for each step and add it to seq_time
 
@@ -1867,23 +1880,25 @@ class QbloxExperiment:
 			output_num = name.replace("O", "")
 			curr_sequencer = getattr(qcm_module, "sequencer" + str(int(output_num) - 1))
 			curr_sequencer.sync_en(True)
-			print(qcm_module.get_sequencer_status(int(output_num)))
+			print(qcm_module.get_sequencer_status(int(output_num) - 1))
 
 		if plot:
 			qrm_module.sequencer0.sync_en(True)
+			print(qrm_module.get_sequencer_status(0))
+
 		
-		rf_module.sequencer0.sync_en(True)
+		#rf_module.sequencer0.sync_en(True)
 
 		# Here we arm the sequencers
 
-		qcm_module.arm_sequencer()
-
 		for name in output_sequences.keys():
 			output_num = name.replace("O", "")
+			qcm_module.arm_sequencer(int(output_num) - 1)
 			print(qcm_module.get_sequencer_status(int(output_num)))
 
 		if plot:
 			qrm_module.arm_sequencer()
+			print(qrm_module.get_sequencer_status(0))
 		
 		rf_module.arm_sequencer()
 
@@ -1899,14 +1914,14 @@ class QbloxExperiment:
 
 		# Then, we stop the sequencers
 
-		qcm_module.stop_sequencer()
-
 		for name in output_sequences.keys():
 			output_num = name.replace("O", "")
-			print(qcm_module.get_sequencer_status(int(output_num)))
+			qcm_module.stop_sequencer(int(output_num) - 1)
+			print(qcm_module.get_sequencer_status(int(output_num) - 1))
 
 		if plot:
 			qrm_module.stop_sequencer()
+			print(qrm_module.get_sequencer_status(0))
 		
 		rf_module.stop_sequencer()
 
@@ -1940,7 +1955,7 @@ class QbloxExperiment:
 
 			filename = f"{timestamp}Square_Pulse_Program"
 
-			sh.plot_input(module = qrm_module, sequencer = 0, acquisition_name = 'acq_0', acquisition_time = acquisition_time, save_path = self.save_path, filename = filename)
+			sh.plot_input(module = qrm_module, sequencer = 0, acquisition_name = 'acq_0', acquisition_time = acquisition_time, repeats = repeats[0], save_path = self.save_path, filename = filename)
 
 			# This section retrieves the data from the acquisition
 
@@ -1949,11 +1964,6 @@ class QbloxExperiment:
 			readout_data = qrm_module.get_acquisitions(0) # Get acquisition list from instrument.
 
 			resolution = qrm_module.sequencer0.integration_length_acq()
-
-			'''if resolution == time_per_point: #TODO Replace time per point
-				pass
-			else:
-				time_per_point = resolution'''
 
 			# Find the number of bins to determine what kind of acquistion we are doing.
 			num_bins = len(readout_data['acq_0']['acquisition']['bins']['integration']['path0'])
@@ -1988,10 +1998,17 @@ class QbloxExperiment:
 		# Resets the connection to the cluster. If not done, the offsets will be incorrect when playing another sequence.
 
 		cluster.reset()
+		
+		if acquisition_time*max(repeats) > 100e6:
+			for i in range(10):
+
+				time.sleep(5.0)
+
+				cluster.reset()
 
 		return None
 
-	def run_square_program_csv(self,
+	def run_pulse_program_csv(self,
 							  csv_file: str):
 		
 		'''
@@ -2049,7 +2066,7 @@ class QbloxExperiment:
 
 		# Run the QBlox code through the run_square_program function
 
-		self.run_square_program(output_sequences)
+		self.run_pulse_program(output_sequences)
 		return None
 
 	def aquire_data(self, acq_sequencer: int, acquisition_name: str, acquisition_length: int, acquisition_path: list, acquisition_delay = 0, resolution = 300, save_path = r'C:\\Users\\coher\\Desktop', plot = False):
@@ -2251,13 +2268,48 @@ class QbloxExperiment:
 
 		return print("Calibration Completed ¯\_(ツ)_/¯  good luck")
 
-	def SetSpiRACKVoltage(self, dac:int = None,voltage:float = None):
+	def SetSpiRACKVoltage(self, voltage_configuration:dict[str,tuple]):
 		
 		"""
-		TODO Generalize
+		Sets the voltage of a specific DAC on the spirack.
+
+		Function Inputs:
+		voltage_configuration:  Dictionary containing the dac name as stated in the config.yaml file as the key and the voltage you want to set as the value
 		"""
 		
-		if dac == 1:
-			self.spirack.module1.dac1.voltage(voltage)
-		else: 
-			self.spirack.module1.dac2.voltage(voltage)
+		# First, we obtain all the names for each dac if the Spi Rack is connected
+		if self.config_data['spirack']['connected']:
+
+			dac_name_list = list(self.dac_name_Mods_and_Dacs.keys())
+
+			# Then, we determine which dacs are being set in the provided voltage configuration
+
+			dacs_and_vals = []
+
+			for name in dac_name_list:
+
+				if name in voltage_configuration:
+					
+					dacs_and_vals.append((self.dac_name_Mods_and_Dacs.get(name), voltage_configuration.get(name)))
+
+			# Now, we can set the voltage for each dac
+
+			for info, val in dacs_and_vals:	
+
+				curr_module = getattr(self.spirack, info[0])
+				curr_dac = getattr(curr_module, info[1])
+
+				curr_dac.voltage(val)
+				while curr_dac.is_ramping():
+					time.sleep(0.001)
+
+				curr_voltage = curr_dac.voltage()
+				print(f"{info[1]} of {info[0]} has been set to: {curr_voltage} V")
+
+	def ClusterReset(self):
+
+		'''
+		Resets the QBlox Cluster
+		'''
+
+		self.cluster.reset()
