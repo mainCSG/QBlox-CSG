@@ -636,7 +636,7 @@ def make_input_sequence(input:list, iterations:int = 1, resolution = 300):
 
 	return sequence, repeat_num
 
-def plot_input(module, sequencer:int, acquisition_name:str, acquisition_time:int, repeats:int, path = 0, save_path = None, filename = None):
+def plot_input(module, sequencer:int, acquisition_name:str, acquisition_time:int, path = 0, save_path = None, filename = None):
 	module.get_acquisition_status(sequencer) # Wait for the sequencer to stop with a timeout period of one minute.
 	module.store_scope_acquisition(sequencer, acquisition_name) # Move acquisition data from temporary memory to acquisition list.
 	readout_data = module.get_acquisitions(sequencer) # Get acquisition list from instrument.
@@ -661,7 +661,6 @@ def plot_input(module, sequencer:int, acquisition_name:str, acquisition_time:int
 			pass
 			#plt.plot(t, data1, alpha = 0.9, label = "Path 1")
 
-		
 		# Set titles
 		plt.title("QRM input")
 		plt.xlabel("Time [ns]")
@@ -673,18 +672,15 @@ def plot_input(module, sequencer:int, acquisition_name:str, acquisition_time:int
 		save_path.replace(".", "_")
 		filename.replace(".", "_")
 
-
 		full_path = os.path.join(save_path, filename + ".pdf")
 
 		plt.savefig(full_path,dpi = 600)
 		print(f"໒(⊙ᴗ⊙)७✎▤: Plot has been saved at {full_path}.")
 
-
 		# Display a legend
 		plt.legend()
 		plt.show()
 
-				
 		# print(data0)
 		# print(type(data0))
 		
@@ -745,7 +741,7 @@ def plot_input(module, sequencer:int, acquisition_name:str, acquisition_time:int
 			#ax.plot(t, data1, alpha = 1.0, label = "Path 1")
 
 		# Set titles
-		ax.set_title("QRM input")
+		ax.set_title(f"QRM input {sequencer}")
 		ax.set_xlabel("Time [ns]")
 		ax.set_ylabel("Input [V]")
 

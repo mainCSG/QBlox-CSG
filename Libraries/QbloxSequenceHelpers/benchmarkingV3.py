@@ -1341,9 +1341,9 @@ class QbloxExperiment:
 						pulse_amplitudes: list[float],
 						pulse_lengths: list[float],
 						times_between_pulses: list[float],
-						acquisition_time: int,
-						acquisition_delay: float = 0.0,
-						acquisition_resolution: int = 1,
+						total_acquisition_time: list[int] = [0],
+						acquisition_delay: list[float] = [0.0],
+						acquisition_resolution: list[int] = [1],
 						repeats: list[int] = [],    
 						voltage_configuration: dict[str,tuple] = {},
 						plot = False
@@ -1414,6 +1414,8 @@ class QbloxExperiment:
 			
 			seq_time = 0
 
+			input_seq = []
+
 			# Here, we check that the lists of parameters have the same length and that no list has length greater than 4
 
 			if len(qcm_output_names) != len(pulse_amplitudes) != len(pulse_lengths) != len(times_between_pulses) != len(repeats):
@@ -1424,10 +1426,20 @@ class QbloxExperiment:
 					raise ValueError("One of the specified pulse parameters has more than 4 arguments. Please have a maximum of 4 arguments per parameter.")
 
 			# Here, we check if the amplitude is above +-2.5 V and raise an error is true
+
 			for i in pulse_amplitudes:
 				if abs(i) > 2.5:
 					raise ValueError("The pulse amplitude set is above 2.5 V. The QCM can only output +-2.5 V. Please input a valid pulse amplitude.")
 
+			# Here, we check if the qrm inputs are given correctly
+
+			if len(acquisition_delay) != len(acquisition_resolution) != len(total_acquisition_time):
+				raise ValueError("There is a mismatch in the number of parameters set for acquisition. Please ensure that lengths of lists match")
+			
+			for i in [len(acquisition_delay), len(acquisition_resolution), len(total_acquisition_time)]:
+				if i > 2:
+					raise ValueError("One of the specified acquisition parameters has more than 2 arguments. Please have a maximum of 2 arguments per acquisition parameter.")
+				
 			# Here, we append the steps to the output_seq list
 			
 			for i, output_seq in enumerate(output_sequences.values()):
@@ -1443,7 +1455,8 @@ class QbloxExperiment:
 			# Now, we define our input sequence, if plotting has been enabled
 
 			if plot:
-				input_seq = ['acq_0', acquisition_delay, (acquisition_time)*repeats[0]]
+				for i in range(len(acquisition_delay)):
+					input_seq.append([f'acq_{i}', acquisition_delay[i], (total_acquisition_time[i])])
 
 			# Now, we disconnect any prexsisting connections
 
@@ -1474,7 +1487,10 @@ class QbloxExperiment:
 				qcm_curr_sequence(sh.make_output_sequence(output_seq, module = "qcm", iterations = repeats[i]))
 
 			if plot:
-				qrm_module.sequencer0.sequence(sh.make_input_sequence(input_seq, resolution=acquisition_resolution)[0]) #TODO Replace time per point
+				for i in range(len(acquisition_delay)):
+					qrm_curr_sequencer = getattr(qrm_module, "sequencer" + str(i))
+					qrm_curr_sequence = getattr(qrm_curr_sequencer, "sequence")
+					qrm_curr_sequence(sh.make_input_sequence(input_seq[i], resolution=acquisition_resolution[i])[0])
 			
 			rf_module.sequencer1.sequence(sh.marker_only_sequence())
 
@@ -1489,7 +1505,8 @@ class QbloxExperiment:
 				curr_out("I")
 
 			if plot:
-				sh.connect_input(module = qrm_module, sequencer = 0, input_index = 0, path = 0, resolution=acquisition_resolution) #TODO Replace time per point
+				for i in range(len(acquisition_delay)):
+					sh.connect_input(module = qrm_module, sequencer = i, input_index = i, path = 0, resolution=acquisition_resolution[i])
 
 			""" 
 			The QRM has a built-in amplifier that automatically amplifies any imput signal by 6 dB. In the following, 
@@ -1507,10 +1524,17 @@ class QbloxExperiment:
 					qrm_module.in0_offset(-0.016)
 				else:
 					qrm_module.in0_offset(-I_offset)
+				
+				if abs(Q_offset) > 0.02:
+					qrm_module.in1_offset(-0.016)
+				else:
+					qrm_module.in1_offset(-Q_offset)
 
-				qrm_module.in1_offset(-Q_offset)
-
-				print(f"Current Gain: {qrm_module.in0_gain()} dB, Offset: {qrm_module.in0_offset()} V")
+				for i in range(len(acquisition_delay)):
+					if i == 0:
+						print(f"Current Gain: {qrm_module.in0_gain()} dB, Offset: {qrm_module.in0_offset()} V")
+					if i == 1:
+						print(f"Current Gain: {qrm_module.in1_gain()} dB, Offset: {qrm_module.in1_offset()} V")
 			
 			
 
@@ -1523,8 +1547,10 @@ class QbloxExperiment:
 				print(qcm_module.get_sequencer_status(int(output_num) - 1))
 			
 			if plot:
-				qrm_module.sequencer0.sync_en(True)
-				print(qrm_module.get_sequencer_status(0))
+				for i in range(len(acquisition_delay)):
+					qrm_curr_sequencer = getattr(qrm_module, "sequencer" + str(i))
+					qrm_curr_sequencer.sync_en(True)
+					print(qrm_module.get_sequencer_status(i))
 			
 			rf_module.sequencer0.sync_en(True)
 
@@ -1535,8 +1561,9 @@ class QbloxExperiment:
 				print(qcm_module.get_sequencer_status(int(output_num) - 1))
 
 			if plot:
-				qrm_module.arm_sequencer()
-				print(qrm_module.get_sequencer_status(0))
+				for i in range(len(acquisition_delay)):
+					qrm_module.arm_sequencer(i)
+					print(qrm_module.get_sequencer_status(i))
 			
 			rf_module.arm_sequencer()
 
@@ -1558,8 +1585,9 @@ class QbloxExperiment:
 				print(qcm_module.get_sequencer_status(int(output_num) - 1))
 
 			if plot:
-				qrm_module.stop_sequencer()
-				print(qrm_module.get_sequencer_status(0))
+				for i in range(len(acquisition_delay)):
+					qrm_module.stop_sequencer(i)
+					print(qrm_module.get_sequencer_status(i))
 			
 			rf_module.stop_sequencer()
 
@@ -1593,50 +1621,54 @@ class QbloxExperiment:
 
 				filename = f"{timestamp}Square_Pulse_{pulse_amplitudes}_{pulse_lengths}_{times_between_pulses}"
 
-				sh.plot_input(module = qrm_module, sequencer = 0, acquisition_name = 'acq_0', acquisition_time = acquisition_time, repeats = repeats[0], save_path = self.save_path, filename = filename)
+				for i in range(len(acquisition_delay)):
 
-				# This section retrieves the data from the acquisition
+					sh.plot_input(module = qrm_module, sequencer = i, acquisition_name = f'acq_{i}', acquisition_time = total_acquisition_time, save_path = self.save_path, filename = filename + f"_in{i}")
 
-				qrm_module.get_acquisition_status(0) # Wait for the sequencer to stop with a timeout period of one minute.
-				qrm_module.store_scope_acquisition(0, 'acq_0') # Move acquisition data from temporary memory to acquisition list.
-				readout_data = qrm_module.get_acquisitions(0) # Get acquisition list from instrument.
+					# This section retrieves the data from the acquisition
 
-				resolution = qrm_module.sequencer0.integration_length_acq()
+					qrm_module.get_acquisition_status(i) # Wait for the sequencer to stop with a timeout period of one minute.
+					qrm_module.store_scope_acquisition(i, f'acq_{i}') # Move acquisition data from temporary memory to acquisition list.
+					readout_data = qrm_module.get_acquisitions(i) # Get acquisition list from instrument.
 
-				# Find the number of bins to determine what kind of acquistion we are doing.
-				num_bins = len(readout_data['acq_0']['acquisition']['bins']['integration']['path0'])
-				# print("number of bins: ",num_bins)
+					qrm_curr_res = getattr(qrm_module, "sequencer" + str(i))
 
-				if num_bins == 1:
+					resolution = qrm_curr_res.integration_length_acq()
 
-					# print(f"resolution in plot_input: {resolution}")
-					# If it is a single acquisition with resolution of 1 ns
-					data0 = readout_data['acq_0']['acquisition']['scope']['path0']['data'] # Extract path 0 data
+					# Find the number of bins to determine what kind of acquistion we are doing.
+					num_bins = len(readout_data[f'acq_{i}']['acquisition']['bins']['integration']['path0'])
+					# print("number of bins: ",num_bins)
 
-				else:
-					
-					repeat_num = sh.make_input_sequence(input_seq, resolution = resolution)[1] #TODO Replace time per point
+					if num_bins == 1:
 
-					# print(f"resolution in plot_input: {resolution}")
+						# print(f"resolution in plot_input: {resolution}")
+						# If it is a single acquisition with resolution of 1 ns
+						data0 = readout_data[f'acq_{i}']['acquisition']['scope']['path0']['data'] # Extract path 0 data
 
-					data0 = np.array(readout_data['acq_0']['acquisition']['bins']['integration']['path0']) / resolution # Extract path 0 data #TODO Replace time per point
+					else:
+						
+						repeat_num = sh.make_input_sequence(input_seq[i], resolution = resolution)[1]
 
-				#print(data0)
+						# print(f"resolution in plot_input: {resolution}")
 
-				#print(data0.shape)
+						data0 = np.array(readout_data[f'acq_{i}']['acquisition']['bins']['integration']['path0']) / resolution # Extract path 0 data #TODO Replace time per point
 
-				# Now, we add this sweeps data to the data list
+					#print(data0)
 
-				dataI.append(data0)
+					#print(data0.shape)
 
-				'''if repeats > 1:
-					self.average_results_csv_only(csv_file_number = repeats)'''
+					# Now, we add this sweeps data to the data list
+
+					dataI.append(data0)
+
+					'''if repeats > 1:
+						self.average_results_csv_only(csv_file_number = repeats)'''
 
 			# Resets the connection to the cluster. If not done, the offsets will be incorrect when playing another sequence.
 
 			cluster.reset()
 
-			if acquisition_time*repeats > 100e6:
+			if total_acquisition_time > 100e6:
 				for i in range(10):
 
 					time.sleep(5.0)
@@ -1647,9 +1679,9 @@ class QbloxExperiment:
 
 	def run_pulse_program(self,
 						  pulse_setup: dict[str, list],
-						  acquisition_time: float = 0.0,
-						  acquisition_delay: float = 0.0,
-						  acquisition_resolution: int = 1, 
+						  total_acquisition_time: list[int] = [0],
+						  acquisition_delay: list[float] = [0.0],
+						  acquisition_resolution: list[int] = [1],
 						  repeats: list[int] = [],    
 						  voltage_configuration: dict[str,tuple] = {},
 						  plot = False):
@@ -1719,6 +1751,7 @@ class QbloxExperiment:
 		seq_time = 0
 
 		pulse_amplitudes = []
+		input_seq = []
 
 		# Create a list for 1 repeats for each outputs if argument is not given
 
@@ -1729,6 +1762,15 @@ class QbloxExperiment:
 		output_seqs_list = [[] for _ in range(len(pulse_setup))]
 		qcm_output_names = list(pulse_setup.keys())
 
+		# Here, we check if the qrm inputs are given correctly
+
+		if len(acquisition_delay) != len(acquisition_resolution) != len(total_acquisition_time):
+			raise ValueError("There is a mismatch in the number of parameters set for acquisition. Please ensure that lengths of lists match")
+		
+		for i in [len(acquisition_delay), len(acquisition_resolution), len(total_acquisition_time)]:
+			if i > 2:
+				raise ValueError("One of the specified acquisition parameters has more than 2 arguments. Please have a maximum of 2 arguments per acquisition parameter.")
+			
 		for i, output_seq in enumerate(pulse_setup.values()):
 			
 			for j, step in enumerate(output_seq):
@@ -1804,7 +1846,8 @@ class QbloxExperiment:
 		# Now, we define our input sequence, if plotting has been enabled
 
 		if plot:
-			input_seq = ['acq_0', acquisition_delay, (acquisition_time)*repeats[0]]
+			for i in range(len(acquisition_delay)):
+				input_seq.append([f'acq_{i}', acquisition_delay[i], (total_acquisition_time[i])])
 
 		# Now, we disconnect any prexsisting connections
 
@@ -1836,7 +1879,10 @@ class QbloxExperiment:
 
 
 		if plot:
-			qrm_module.sequencer0.sequence(sh.make_input_sequence(input_seq, resolution = acquisition_resolution)[0]) #TODO Replace time per point
+			for i in range(len(acquisition_delay)):
+				qrm_curr_sequencer = getattr(qrm_module, "sequencer" + str(i))
+				qrm_curr_sequence = getattr(qrm_curr_sequencer, "sequence")
+				qrm_curr_sequence(sh.make_input_sequence(input_seq[i], resolution=acquisition_resolution[i])[0])
 		
 		rf_module.sequencer0.sequence(sh.marker_only_sequence())
 
@@ -1851,7 +1897,8 @@ class QbloxExperiment:
 			curr_out("I")
 
 		if plot:
-			sh.connect_input(module = qrm_module, sequencer = 0, input_index = 0, path = 0, resolution = acquisition_resolution) #TODO Replace time per point
+			for i in range(len(acquisition_delay)):
+				sh.connect_input(module = qrm_module, sequencer = i, input_index = i, path = 0, resolution=acquisition_resolution[i])
 
 		""" 
 		The QRM has a built-in amplifier that automatically amplifies any imput signal by 6 dB. In the following, 
@@ -1869,10 +1916,17 @@ class QbloxExperiment:
 				qrm_module.in0_offset(-0.016)
 			else:
 				qrm_module.in0_offset(-I_offset)
+			
+			if abs(Q_offset) > 0.02:
+				qrm_module.in1_offset(-0.016)
+			else:
+				qrm_module.in1_offset(-Q_offset)
 
-			qrm_module.in1_offset(-Q_offset)
-
-			print(f"Current Gain: {qrm_module.in0_gain()} dB, Offset: {qrm_module.in0_offset()} V")
+			for i in range(len(acquisition_delay)):
+				if i == 0:
+					print(f"Current Gain: {qrm_module.in0_gain()} dB, Offset: {qrm_module.in0_offset()} V")
+				if i == 1:
+					print(f"Current Gain: {qrm_module.in1_gain()} dB, Offset: {qrm_module.in1_offset()} V")
 
 		# Then, we enable the sync protocol for all sequencers
 
@@ -1883,8 +1937,10 @@ class QbloxExperiment:
 			print(qcm_module.get_sequencer_status(int(output_num) - 1))
 
 		if plot:
-			qrm_module.sequencer0.sync_en(True)
-			print(qrm_module.get_sequencer_status(0))
+			for i in range(len(acquisition_delay)):
+				qrm_curr_sequencer = getattr(qrm_module, "sequencer" + str(i))
+				qrm_curr_sequencer.sync_en(True)
+				print(qrm_module.get_sequencer_status(i))
 
 		
 		#rf_module.sequencer0.sync_en(True)
@@ -1897,8 +1953,9 @@ class QbloxExperiment:
 			print(qcm_module.get_sequencer_status(int(output_num)))
 
 		if plot:
-			qrm_module.arm_sequencer()
-			print(qrm_module.get_sequencer_status(0))
+			for i in range(len(acquisition_delay)):
+				qrm_module.arm_sequencer(i)
+				print(qrm_module.get_sequencer_status(i))
 		
 		rf_module.arm_sequencer()
 
@@ -1920,8 +1977,9 @@ class QbloxExperiment:
 			print(qcm_module.get_sequencer_status(int(output_num) - 1))
 
 		if plot:
-			qrm_module.stop_sequencer()
-			print(qrm_module.get_sequencer_status(0))
+			for i in range(len(acquisition_delay)):
+				qrm_module.stop_sequencer(i)
+				print(qrm_module.get_sequencer_status(i))
 		
 		rf_module.stop_sequencer()
 
@@ -1954,52 +2012,55 @@ class QbloxExperiment:
 			timestamp = experiment_time.strftime('%Y-%m-%d_%H-%M%S')
 
 			filename = f"{timestamp}Square_Pulse_Program"
+			
+			for i in range(len(acquisition_delay)):
+				sh.plot_input(module = qrm_module, sequencer = i, acquisition_name = f'acq_{i}', acquisition_time = total_acquisition_time, save_path = self.save_path, filename = filename + f"_in{i}")
+			
+				# This section retrieves the data from the acquisition
 
-			sh.plot_input(module = qrm_module, sequencer = 0, acquisition_name = 'acq_0', acquisition_time = acquisition_time, repeats = repeats[0], save_path = self.save_path, filename = filename)
+				qrm_module.get_acquisition_status(i) # Wait for the sequencer to stop with a timeout period of one minute.
+				qrm_module.store_scope_acquisition(i, f'acq_{i}') # Move acquisition data from temporary memory to acquisition list.
+				readout_data = qrm_module.get_acquisitions(i) # Get acquisition list from instrument.
 
-			# This section retrieves the data from the acquisition
+				qrm_curr_res = getattr(qrm_module, "sequencer" + str(i))
 
-			qrm_module.get_acquisition_status(0) # Wait for the sequencer to stop with a timeout period of one minute.
-			qrm_module.store_scope_acquisition(0, 'acq_0') # Move acquisition data from temporary memory to acquisition list.
-			readout_data = qrm_module.get_acquisitions(0) # Get acquisition list from instrument.
+				resolution = qrm_curr_res.integration_length_acq()
 
-			resolution = qrm_module.sequencer0.integration_length_acq()
+				# Find the number of bins to determine what kind of acquistion we are doing.
+				num_bins = len(readout_data[f'acq_{i}']['acquisition']['bins']['integration']['path0'])
 
-			# Find the number of bins to determine what kind of acquistion we are doing.
-			num_bins = len(readout_data['acq_0']['acquisition']['bins']['integration']['path0'])
+				# print("number of bins: ",num_bins)
 
-			# print("number of bins: ",num_bins)
+				if num_bins == 1:
 
-			if num_bins == 1:
+					# print(f"resolution in plot_input: {resolution}")
+					# If it is a single acquisition with resolution of 1 ns
+					data0 = readout_data[f'acq_{i}']['acquisition']['scope']['path0']['data'] # Extract path 0 data
 
-				# print(f"resolution in plot_input: {resolution}")
-				# If it is a single acquisition with resolution of 1 ns
-				data0 = readout_data['acq_0']['acquisition']['scope']['path0']['data'] # Extract path 0 data
+				else:
+					
+					repeat_num = sh.make_input_sequence(input_seq, resolution = resolution)[1] #TODO Replace time per point
 
-			else:
-				
-				repeat_num = sh.make_input_sequence(input_seq, resolution = resolution)[1] #TODO Replace time per point
+					# print(f"resolution in plot_input: {resolution}")
 
-				# print(f"resolution in plot_input: {resolution}")
+					data0 = np.array(readout_data[f'acq_{i}']['acquisition']['bins']['integration']['path0']) / resolution # Extract path 0 data #TODO Replace time per point
 
-				data0 = np.array(readout_data['acq_0']['acquisition']['bins']['integration']['path0']) / resolution # Extract path 0 data #TODO Replace time per point
+				#print(data0)
 
-			#print(data0)
+				#print(data0.shape)
 
-			#print(data0.shape)
+				# Now, we add this sweeps data to the data list
 
-			# Now, we add this sweeps data to the data list
+				dataI.append(data0)
 
-			dataI.append(data0)
-
-			'''if repeats > 1:
-				self.average_results_csv_only(csv_file_number = repeats)'''
+				'''if repeats > 1:
+					self.average_results_csv_only(csv_file_number = repeats)'''
 		
 		# Resets the connection to the cluster. If not done, the offsets will be incorrect when playing another sequence.
 
 		cluster.reset()
 		
-		if acquisition_time*max(repeats) > 100e6:
+		if total_acquisition_time > 100e6:
 			for i in range(10):
 
 				time.sleep(5.0)
